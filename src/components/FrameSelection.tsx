@@ -33,9 +33,20 @@ export default function FrameSelection({
     const firstSlot = frame.slots[0];
     if (!firstSlot) return `${slotCount}-Photo Layout`;
 
+    if (slotCount === 1) {
+      return 'Single Photo Polaroid';
+    } else if (slotCount === 2) {
+      return 'Duo Layout Card';
+    } else if (slotCount === 3) {
+      if (firstSlot.width > 45) {
+        return '3-Photo Bento Layout';
+      }
+      return 'Classic 3-Photo Strip';
+    }
+
     // Traditional vertical strip
     if (firstSlot.width < 90 && firstSlot.height < 25) {
-      return 'Classic 2x6 Strip';
+      return 'Classic 4-Photo Strip';
     } else if (firstSlot.width < 50 && firstSlot.height < 50) {
       return 'Standard 4x6 Grid';
     } else {

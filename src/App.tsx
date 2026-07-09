@@ -131,7 +131,15 @@ export default function App() {
   }, [settings]);
 
   useEffect(() => {
-    safeSaveLocalStorage('photobooth_sessions', JSON.stringify(sessions));
+    // Sanitize sessions to strip heavy base64 data URLs before caching in local storage.
+    // Full photostrips are safely persisted and synced in real-time via Firestore.
+    const sanitized = sessions.map((s) => {
+      if (s.photostripUrl && s.photostripUrl.startsWith('data:image')) {
+        return { ...s, photostripUrl: '' };
+      }
+      return s;
+    });
+    safeSaveLocalStorage('photobooth_sessions', JSON.stringify(sanitized));
   }, [sessions]);
 
   // Test connection and subscribe to Firestore collections for real-time synchronization across devices
@@ -158,10 +166,41 @@ export default function App() {
 
       if (dbFrames.length > 0) {
         setFrames(dbFrames);
+
+        // Auto-seed any newly added DEFAULT_FRAMES that do not exist in the database yet
+        const missingFrames = DEFAULT_FRAMES.filter((df) => !dbFrames.some((dbf) => dbf.id === df.id));
+        if (missingFrames.length > 0) {
+          missingFrames.forEach((frame) => {
+            let style: 'wedding' | 'birthday' | 'graduation' | 'corporate' | 'neon' | 'film' | 'retro' | 'vintage' = 'wedding';
+            let orientation: 'portrait' | 'landscape' | 'square' = 'portrait';
+
+            if (frame.id.includes('wedding')) style = 'wedding';
+            else if (frame.id.includes('birthday')) style = 'birthday';
+            else if (frame.id.includes('graduation')) style = 'graduation';
+            else if (frame.id.includes('corporate')) style = 'corporate';
+            else if (frame.id.includes('neon')) style = 'neon';
+            else if (frame.id.includes('film')) style = 'film';
+            else if (frame.id.includes('retro') || frame.id.includes('polaroid')) style = 'retro';
+            else if (frame.id.includes('vintage')) style = 'vintage';
+
+            if (frame.id.includes('portrait')) orientation = 'portrait';
+            else if (frame.id.includes('landscape')) orientation = 'landscape';
+            else if (frame.id.includes('square')) orientation = 'square';
+
+            const overlay = generateMockFrameOverlay(style, orientation, frame.slots);
+            const hydrated = {
+              ...frame,
+              imageUrl: overlay,
+            };
+
+            setDoc(doc(db, 'frames', frame.id), hydrated)
+              .catch((err) => console.error('[FIRESTORE] Error seeding missing frame:', frame.id, err));
+          });
+        }
       } else {
         // Hydrate default frames if Firestore is empty
         const hydrated = DEFAULT_FRAMES.map((frame) => {
-          let style: 'wedding' | 'birthday' | 'graduation' | 'corporate' | 'neon' = 'wedding';
+          let style: 'wedding' | 'birthday' | 'graduation' | 'corporate' | 'neon' | 'film' | 'retro' | 'vintage' = 'wedding';
           let orientation: 'portrait' | 'landscape' | 'square' = 'portrait';
 
           if (frame.id.includes('wedding')) style = 'wedding';
@@ -169,12 +208,15 @@ export default function App() {
           else if (frame.id.includes('graduation')) style = 'graduation';
           else if (frame.id.includes('corporate')) style = 'corporate';
           else if (frame.id.includes('neon')) style = 'neon';
+          else if (frame.id.includes('film')) style = 'film';
+          else if (frame.id.includes('retro') || frame.id.includes('polaroid')) style = 'retro';
+          else if (frame.id.includes('vintage')) style = 'vintage';
 
           if (frame.id.includes('portrait')) orientation = 'portrait';
           else if (frame.id.includes('landscape')) orientation = 'landscape';
           else if (frame.id.includes('square')) orientation = 'square';
 
-          const overlay = generateMockFrameOverlay(style, orientation);
+          const overlay = generateMockFrameOverlay(style, orientation, frame.slots);
           return {
             ...frame,
             imageUrl: overlay,
@@ -232,7 +274,13 @@ export default function App() {
   // Sync frames locally safely
   useEffect(() => {
     if (frames.length > 0) {
-      safeSaveLocalStorage('photobooth_frames', JSON.stringify(frames));
+      const sanitized = frames.map((f) => {
+        if (f.imageUrl && f.imageUrl.startsWith('data:image')) {
+          return { ...f, imageUrl: '' };
+        }
+        return f;
+      });
+      safeSaveLocalStorage('photobooth_frames', JSON.stringify(sanitized));
     }
   }, [frames]);
 

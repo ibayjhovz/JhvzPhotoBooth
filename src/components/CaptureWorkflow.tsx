@@ -260,11 +260,11 @@ export default function CaptureWorkflow({
   };
 
   const handleAcceptPhoto = () => {
-    if (currentStep < 4) {
+    if (currentStep < selectedFrame.slots.length) {
       setCurrentStep((prev) => prev + 1);
       setWorkflowState('preview');
     } else {
-      // Completed all 4 photos!
+      // Completed all photos!
       onPhotosComplete(capturedPhotos);
     }
   };
@@ -305,7 +305,7 @@ export default function CaptureWorkflow({
 
         {/* Capturing Indicators */}
         <div className="flex gap-2">
-          {[1, 2, 3, 4].map((stepNum) => {
+          {Array.from({ length: selectedFrame.slots.length }, (_, i) => i + 1).map((stepNum) => {
             const isCompleted = capturedPhotos[stepNum - 1] !== undefined && capturedPhotos[stepNum - 1] !== '';
             const isActive = currentStep === stepNum;
 

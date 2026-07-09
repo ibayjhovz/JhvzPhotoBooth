@@ -2,8 +2,9 @@ import { EventFrame, PhotoboothEvent, EmailConfig, PrinterConfig, AppSettings } 
 
 // Helper to generate a styled transparent PNG frame overlay as a base64 Data URL
 export function generateMockFrameOverlay(
-  style: 'wedding' | 'birthday' | 'graduation' | 'corporate' | 'neon',
-  orientation: 'portrait' | 'landscape' | 'square'
+  style: 'wedding' | 'birthday' | 'graduation' | 'corporate' | 'neon' | 'film' | 'retro' | 'vintage',
+  orientation: 'portrait' | 'landscape' | 'square',
+  customSlots?: { id: number; x: number; y: number; width: number; height: number }[]
 ): string {
   const canvas = document.createElement('canvas');
   if (orientation === 'portrait') {
@@ -145,6 +146,89 @@ export function generateMockFrameOverlay(
       ctx.font = 'bold 38px "Space Grotesk", sans-serif';
       ctx.fillText('N E O N   V I B E S', w / 2, h - 55);
     }
+  } else if (style === 'film') {
+    // Cinematic Hollywood Filmstrip: Deep black, sprocket holes on margins
+    ctx.fillStyle = '#111115';
+    ctx.fillRect(0, 0, w, h);
+
+    // Sprocket holes
+    ctx.fillStyle = '#2A2A30';
+    if (orientation === 'portrait') {
+      for (let sy = 25; sy < h - 25; sy += 70) {
+        ctx.fillRect(15, sy, 22, 34);
+        ctx.fillRect(w - 37, sy, 22, 34);
+      }
+    } else {
+      for (let sx = 25; sx < w - 25; sx += 70) {
+        ctx.fillRect(sx, 15, 34, 22);
+        ctx.fillRect(sx, h - 37, 34, 22);
+      }
+    }
+
+    ctx.fillStyle = '#FFFFFF';
+    ctx.textAlign = 'center';
+    if (orientation === 'portrait') {
+      ctx.font = 'bold 30px "JetBrains Mono", monospace';
+      ctx.fillText('• HOLLYWOOD CINE •', w / 2, h - 110);
+      ctx.font = '18px "JetBrains Mono", monospace';
+      ctx.fillStyle = '#A0A0A5';
+      ctx.fillText('[ ROLL SEC_408 ]', w / 2, h - 65);
+    } else {
+      ctx.font = 'bold 34px "JetBrains Mono", monospace';
+      ctx.fillText('• DIRECTORS CUT •', w / 2, h - 55);
+    }
+  } else if (style === 'retro') {
+    // Polaroid Classic Frame: Warm off-white card, classic hand-written font look
+    ctx.fillStyle = '#FAF8F4';
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.strokeStyle = '#E3DFD5';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(8, 8, w - 16, h - 16);
+
+    ctx.fillStyle = '#2C2A29';
+    ctx.textAlign = 'center';
+    if (orientation === 'portrait') {
+      ctx.font = 'italic 34px "Playfair Display", serif';
+      ctx.fillText('Sweet Memories', w / 2, h - 120);
+      ctx.font = '18px "Inter", sans-serif';
+      ctx.fillText('Captured Live • 2026', w / 2, h - 70);
+    } else {
+      ctx.font = 'italic 38px "Playfair Display", serif';
+      ctx.fillText('Captured Memories', w / 2, h - 55);
+    }
+  } else if (style === 'vintage') {
+    // Vintage Sepia: tan card, flourishes
+    ctx.fillStyle = '#E8DCC4';
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.strokeStyle = '#5C4033';
+    ctx.lineWidth = 6;
+    ctx.strokeRect(20, 20, w - 40, h - 40);
+
+    ctx.strokeStyle = '#5C4033';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(28, 28, w - 56, h - 56);
+
+    ctx.fillStyle = '#5C4033';
+    const corners = [[35, 35], [w - 35, 35], [35, h - 35], [w - 35, h - 35]];
+    corners.forEach(([cx, cy]) => {
+      ctx.beginPath();
+      ctx.arc(cx, cy, 10, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    ctx.fillStyle = '#4A3B32';
+    ctx.textAlign = 'center';
+    if (orientation === 'portrait') {
+      ctx.font = 'bold italic 34px "Playfair Display", serif';
+      ctx.fillText('Vintage Keepsake', w / 2, h - 120);
+      ctx.font = '18px "Inter", sans-serif';
+      ctx.fillText('EST. 2026 • PHOTOBOOTH PRO', w / 2, h - 70);
+    } else {
+      ctx.font = 'bold italic 36px "Playfair Display", serif';
+      ctx.fillText('Vintage Keepsake', w / 2, h - 55);
+    }
   } else {
     // Corporate: Clean white, dark grey text, modern branding
     ctx.fillStyle = '#FFFFFF';
@@ -172,7 +256,7 @@ export function generateMockFrameOverlay(
   // We use globalCompositeOperation = 'destination-out' and fill the photo slots!
   ctx.globalCompositeOperation = 'destination-out';
 
-  const slots = getSlotsForOrientation(orientation);
+  const slots = customSlots || getSlotsForOrientation(orientation);
   slots.forEach(slot => {
     // Convert percentages back to actual pixels
     const px = (slot.x / 100) * w;
@@ -265,6 +349,64 @@ export const DEFAULT_FRAMES: EventFrame[] = [
     category: 'Modern',
     imageUrl: '', // Will be hydrated at runtime
     slots: getSlotsForOrientation('landscape'),
+    active: true,
+  },
+  {
+    id: 'frame-film-portrait',
+    name: 'Classic Hollywood Filmstrip (3-Photo Strip)',
+    category: 'Modern',
+    imageUrl: '',
+    slots: [
+      { id: 1, x: 10, y: 5, width: 80, height: 23 },
+      { id: 2, x: 10, y: 32, width: 80, height: 23 },
+      { id: 3, x: 10, y: 59, width: 80, height: 23 },
+    ],
+    active: true,
+  },
+  {
+    id: 'frame-polaroid-square',
+    name: 'Retro Polaroid Classic (1-Photo Showcase)',
+    category: 'Birthday',
+    imageUrl: '',
+    slots: [
+      { id: 1, x: 10, y: 10, width: 80, height: 72 },
+    ],
+    active: true,
+  },
+  {
+    id: 'frame-vintage-portrait',
+    name: 'Vintage Sepia Keepsake (4-Photo Strip)',
+    category: 'Wedding',
+    imageUrl: '',
+    slots: [
+      { id: 1, x: 7, y: 4, width: 86, height: 19.5 },
+      { id: 2, x: 7, y: 25.5, width: 86, height: 19.5 },
+      { id: 3, x: 7, y: 47, width: 86, height: 19.5 },
+      { id: 4, x: 7, y: 68.5, width: 86, height: 19.5 },
+    ],
+    active: true,
+  },
+  {
+    id: 'frame-cyberpunk-landscape',
+    name: 'Neo-Grid Cyberpunk (3-Photo Bento)',
+    category: 'Modern',
+    imageUrl: '',
+    slots: [
+      { id: 1, x: 5, y: 8, width: 50, height: 72 },
+      { id: 2, x: 58, y: 8, width: 37, height: 34 },
+      { id: 3, x: 58, y: 46, width: 37, height: 34 },
+    ],
+    active: true,
+  },
+  {
+    id: 'frame-sweetheart-square',
+    name: 'Sweetheart Duo (2-Photo Square)',
+    category: 'Wedding',
+    imageUrl: '',
+    slots: [
+      { id: 1, x: 6, y: 12, width: 42, height: 70 },
+      { id: 2, x: 52, y: 12, width: 42, height: 70 },
+    ],
     active: true,
   }
 ];
