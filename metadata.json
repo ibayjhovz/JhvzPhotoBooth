@@ -1,0 +1,10 @@
+{
+  "name": "Remix: Photobooth Pro",
+  "description": "A professional DSLR and webcam photobooth kiosk with a visual frame editor, real-time WebSocket companion controls, automated email delivery, simulated printing, and custom templates.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

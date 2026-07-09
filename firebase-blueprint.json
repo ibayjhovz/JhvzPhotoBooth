@@ -1,0 +1,73 @@
+{
+  "entities": {
+    "Session": {
+      "title": "Session",
+      "description": "A photobooth session capture record containing guest details and photostrip links",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "The unique session ID" },
+        "date": { "type": "string", "format": "date-time", "description": "ISO timestamp of when session was completed" },
+        "guestEmail": { "type": "string", "description": "The email address of the guest" },
+        "guestName": { "type": "string", "description": "The name of the guest" },
+        "frameId": { "type": "string", "description": "ID of the frame selected for the session" },
+        "photos": { "type": "array", "description": "List of individual raw photo URLs or empty" },
+        "photostripUrl": { "type": "string", "description": "The light web path or drive link of the combined photostrip image" },
+        "printed": { "type": "boolean", "description": "Whether the strip was printed" },
+        "emailed": { "type": "boolean", "description": "Whether the strip was emailed" },
+        "printCount": { "type": "number", "description": "Number of print copies requested" },
+        "duration": { "type": "number", "description": "Duration of the capture session in seconds" },
+        "driveFileId": { "type": "string", "description": "Google Drive file ID" },
+        "driveViewLink": { "type": "string", "description": "Google Drive view link" }
+      },
+      "required": ["id", "date", "frameId", "photostripUrl"]
+    },
+    "Event": {
+      "title": "Event",
+      "description": "A photobooth event config record defining active frames, themes and countdown setups",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "logoUrl": { "type": "string" },
+        "frameId": { "type": "string" },
+        "themeColor": { "type": "string" },
+        "countdownDuration": { "type": "number" },
+        "countdownStyle": { "type": "string" },
+        "emailSubject": { "type": "string" },
+        "emailBody": { "type": "string" },
+        "printCopies": { "type": "number" },
+        "autoPrint": { "type": "boolean" }
+      },
+      "required": ["id", "name", "frameId", "themeColor"]
+    },
+    "Frame": {
+      "title": "Frame",
+      "description": "An overlay frame template with transparent slot definitions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "slots": { "type": "array" },
+        "active": { "type": "boolean" },
+        "isCustom": { "type": "boolean" }
+      },
+      "required": ["id", "name", "category", "slots", "active"]
+    }
+  },
+  "firestore": {
+    "/sessions/{sessionId}": {
+      "schema": "Session",
+      "description": "Captured photobooth session records"
+    },
+    "/events/{eventId}": {
+      "schema": "Event",
+      "description": "Configured photobooth event settings"
+    },
+    "/frames/{frameId}": {
+      "schema": "Frame",
+      "description": "Photobooth decorative frame layouts"
+    }
+  }
+}
