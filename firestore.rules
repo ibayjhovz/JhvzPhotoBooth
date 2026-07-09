@@ -16,5 +16,10 @@ service cloud.firestore {
     match /frames/{frameId} {
       allow read, write: if true;
     }
+
+    // Configs Collection
+    match /configs/{configId} {
+      allow read, write: if true;
+    }
   }
 }

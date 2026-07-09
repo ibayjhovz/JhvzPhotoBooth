@@ -1,11 +1,35 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { getFirestore, enableMultiTabIndexedDbPersistence, enableIndexedDbPersistence } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+
+// Enable Firestore offline persistence for cross-device caching & synchronization
+if (typeof window !== 'undefined') {
+  enableMultiTabIndexedDbPersistence(db)
+    .then(() => {
+      console.log('[FIRESTORE] Multi-tab offline persistence enabled successfully!');
+    })
+    .catch((err) => {
+      if (err.code === 'failed-precondition') {
+        console.warn('[FIRESTORE] Multi-tab persistence failed-precondition (multiple tabs open).');
+      } else if (err.code === 'unimplemented') {
+        // Fallback to single-tab persistence
+        enableIndexedDbPersistence(db)
+          .then(() => {
+            console.log('[FIRESTORE] Single-tab offline persistence enabled successfully!');
+          })
+          .catch((singleErr) => {
+            console.error('[FIRESTORE] Single-tab offline persistence failed:', singleErr);
+          });
+      } else {
+        console.error('[FIRESTORE] Error enabling offline persistence:', err);
+      }
+    });
+}
 
 const provider = new GoogleAuthProvider();
 provider.addScope('https://www.googleapis.com/auth/drive.file');

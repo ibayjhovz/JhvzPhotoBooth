@@ -54,6 +54,14 @@
         "isCustom": { "type": "boolean" }
       },
       "required": ["id", "name", "category", "slots", "active"]
+    },
+    "Config": {
+      "title": "Config",
+      "description": "Global application configuration documents like email config, printer config, app settings, and active event ID",
+      "type": "object",
+      "properties": {
+        "value": { "type": "string" }
+      }
     }
   },
   "firestore": {
@@ -68,6 +76,10 @@
     "/frames/{frameId}": {
       "schema": "Frame",
       "description": "Photobooth decorative frame layouts"
+    },
+    "/configs/{configId}": {
+      "schema": "Config",
+      "description": "Global system configurations and active event settings"
     }
   }
 }

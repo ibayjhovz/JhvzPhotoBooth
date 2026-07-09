@@ -132,9 +132,11 @@ export default function App() {
 
   useEffect(() => {
     // Sanitize sessions to strip heavy base64 data URLs before caching in local storage.
-    // Full photostrips are safely persisted and synced in real-time via Firestore.
-    const sanitized = sessions.map((s) => {
-      if (s.photostripUrl && s.photostripUrl.startsWith('data:image')) {
+    // To provide a seamless instant loading experience even when offline, we preserve the full high-res 
+    // photostrip URLs for the most recent 5 sessions, while sanitizing older ones to prevent localStorage quota errors.
+    // Full photostrips are safely persisted and synced in real-time via Firestore and IndexedDB.
+    const sanitized = sessions.map((s, idx) => {
+      if (idx >= 5 && s.photostripUrl && s.photostripUrl.startsWith('data:image')) {
         return { ...s, photostripUrl: '' };
       }
       return s;
@@ -289,10 +291,55 @@ export default function App() {
       console.error('[FIRESTORE] Sessions subscription error:', error);
     });
 
+    // 5. Subscribe to Configs (Saves configurations & active event settings across devices)
+    const unsubscribeConfigs = onSnapshot(collection(db, 'configs'), (snapshot) => {
+      let hasEmailConfig = false;
+      let hasPrinterConfig = false;
+      let hasAppSettings = false;
+      let hasActiveEventId = false;
+
+      snapshot.forEach((doc) => {
+        const id = doc.id;
+        const data = doc.data();
+        if (id === 'email_config') {
+          setEmailConfig(data as EmailConfig);
+          hasEmailConfig = true;
+        } else if (id === 'printer_config') {
+          setPrinterConfig(data as PrinterConfig);
+          hasPrinterConfig = true;
+        } else if (id === 'app_settings') {
+          setSettings(data as AppSettings);
+          hasAppSettings = true;
+        } else if (id === 'active_event_id') {
+          if (data.value) {
+            setActiveEventId(data.value);
+            hasActiveEventId = true;
+          }
+        }
+      });
+
+      // Seed default configs if they do not exist in Firestore yet (creates them on first boot)
+      if (!hasEmailConfig) {
+        setDoc(doc(db, 'configs', 'email_config'), emailConfig).catch(err => console.error('[FIRESTORE] Error seeding email config:', err));
+      }
+      if (!hasPrinterConfig) {
+        setDoc(doc(db, 'configs', 'printer_config'), printerConfig).catch(err => console.error('[FIRESTORE] Error seeding printer config:', err));
+      }
+      if (!hasAppSettings) {
+        setDoc(doc(db, 'configs', 'app_settings'), settings).catch(err => console.error('[FIRESTORE] Error seeding app settings:', err));
+      }
+      if (!hasActiveEventId && activeEventId) {
+        setDoc(doc(db, 'configs', 'active_event_id'), { value: activeEventId }).catch(err => console.error('[FIRESTORE] Error seeding active event id:', err));
+      }
+    }, (error) => {
+      console.error('[FIRESTORE] Configs subscription error:', error);
+    });
+
     return () => {
       unsubscribeFrames();
       unsubscribeEvents();
       unsubscribeSessions();
+      unsubscribeConfigs();
     };
   }, []);
 
@@ -553,6 +600,42 @@ export default function App() {
     }
   };
 
+  const handleSaveEmailConfig = async (updated: EmailConfig) => {
+    setEmailConfig(updated);
+    try {
+      await setDoc(doc(db, 'configs', 'email_config'), updated);
+    } catch (err) {
+      console.error('[FIRESTORE] Error saving email config:', err);
+    }
+  };
+
+  const handleSavePrinterConfig = async (updated: PrinterConfig) => {
+    setPrinterConfig(updated);
+    try {
+      await setDoc(doc(db, 'configs', 'printer_config'), updated);
+    } catch (err) {
+      console.error('[FIRESTORE] Error saving printer config:', err);
+    }
+  };
+
+  const handleSaveSettings = async (updated: AppSettings) => {
+    setSettings(updated);
+    try {
+      await setDoc(doc(db, 'configs', 'app_settings'), updated);
+    } catch (err) {
+      console.error('[FIRESTORE] Error saving settings:', err);
+    }
+  };
+
+  const handleSetActiveEventId = async (id: string) => {
+    setActiveEventId(id);
+    try {
+      await setDoc(doc(db, 'configs', 'active_event_id'), { value: id });
+    } catch (err) {
+      console.error('[FIRESTORE] Error saving active event id:', err);
+    }
+  };
+
   const currentSelectedFrame = frames.find((f) => f.id === selectedFrameId) || frames[0];
 
   return (
@@ -563,7 +646,7 @@ export default function App() {
           activeEvent={activeEvent}
           companionStatus={companionStatus}
           settings={settings}
-          setSettings={setSettings}
+          setSettings={handleSaveSettings}
           onStart={handleStartSession}
           onOpenAdmin={() => setView('admin')}
         />
@@ -653,14 +736,14 @@ export default function App() {
           events={events}
           onSaveEvents={handleSaveEvents}
           activeEventId={activeEventId}
-          onSetActiveEventId={setActiveEventId}
+          onSetActiveEventId={handleSetActiveEventId}
           companionStatus={companionStatus}
           emailConfig={emailConfig}
-          onSaveEmailConfig={setEmailConfig}
+          onSaveEmailConfig={handleSaveEmailConfig}
           printerConfig={printerConfig}
-          onSavePrinterConfig={setPrinterConfig}
+          onSavePrinterConfig={handleSavePrinterConfig}
           settings={settings}
-          onSaveSettings={setSettings}
+          onSaveSettings={handleSaveSettings}
           sessions={sessions}
           onDeleteSession={handleDeleteSessionRecord}
           onClose={() => setView('welcome')}
