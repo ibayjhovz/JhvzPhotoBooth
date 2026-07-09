@@ -613,6 +613,156 @@ export default function AdminDashboard({
                 <div className="lg:col-span-2 p-5 bg-white/5 border border-white/10 backdrop-blur-md rounded-2xl flex flex-col gap-4">
                   <h3 className="text-sm font-black tracking-wider uppercase text-blue-300">SMTP Server Configuration</h3>
 
+                  {/* SMTP Presets Quick Select */}
+                  <div className="flex flex-col gap-2.5 p-4 bg-black/40 border border-white/5 rounded-2xl">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Quick SMTP Setup Presets</span>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {[
+                        {
+                          id: 'gmail',
+                          name: 'Gmail / Workspace',
+                          host: 'smtp.gmail.com',
+                          port: 465,
+                          senderEmail: 'yourname@gmail.com',
+                          help: 'Gmail requires a 16-character App Password (not your primary password). To set up: 1. Sign in to your Google Account. 2. Go to Security. 3. Turn on 2-Step Verification. 4. In the search box, search for "App passwords". 5. Select App: "Other", give it a name like "Photobooth", click Generate. 6. Copy the 16-character code (no spaces) and paste it into the SMTP Password field below.'
+                        },
+                        {
+                          id: 'outlook',
+                          name: 'Outlook / Office 365',
+                          host: 'smtp.office365.com',
+                          port: 587,
+                          senderEmail: 'yourname@outlook.com',
+                          help: 'If your account uses Multi-Factor Authentication (MFA), you must generate an App Password in your Microsoft Account Security settings. Set Host to smtp.office365.com and Port to 587.'
+                        },
+                        {
+                          id: 'yahoo',
+                          name: 'Yahoo Mail',
+                          host: 'smtp.mail.yahoo.com',
+                          port: 465,
+                          senderEmail: 'yourname@yahoo.com',
+                          help: 'Yahoo Mail blocks standard login. Go to Yahoo Account Info > Account Security > Generate App Password. Copy the resulting code and use it as your password.'
+                        },
+                        {
+                          id: 'sendgrid',
+                          name: 'SendGrid',
+                          host: 'smtp.sendgrid.net',
+                          port: 587,
+                          senderEmail: 'apikey',
+                          help: 'For SendGrid, the SMTP Username MUST be literally "apikey". The SMTP Password must be your full API Key (starts with "SG."). Make sure your Sender Email is verified in SendGrid.'
+                        },
+                        {
+                          id: 'mailgun',
+                          name: 'Mailgun',
+                          host: 'smtp.mailgun.org',
+                          port: 587,
+                          senderEmail: 'postmaster@yourdomain.com',
+                          help: 'Verify if your domain is EU or US. Use "smtp.mailgun.org" for US or "smtp.eu.mailgun.org" for EU. Obtain username/password from Mailgun Sending > Domain Settings.'
+                        },
+                        {
+                          id: 'brevo',
+                          name: 'Brevo (Sendinblue)',
+                          host: 'smtp-relay.brevo.com',
+                          port: 587,
+                          senderEmail: 'verified@yourdomain.com',
+                          help: 'SMTP Host: smtp-relay.brevo.com, Port: 587. Username is your Brevo login email. Password is the SMTP Master Key from your Brevo Dashboard under SMTP & API.'
+                        }
+                      ].map((preset) => {
+                        const isSelected = emailConfig.smtpHost === preset.host && emailConfig.smtpPort === preset.port;
+                        return (
+                          <button
+                            key={preset.id}
+                            type="button"
+                            onClick={() => {
+                              onSaveEmailConfig({
+                                ...emailConfig,
+                                smtpHost: preset.host,
+                                smtpPort: preset.port,
+                                smtpUser: preset.id === 'sendgrid' ? 'apikey' : emailConfig.smtpUser,
+                                senderEmail: preset.id !== 'sendgrid' && preset.id !== 'mailgun' && preset.id !== 'brevo' && !emailConfig.senderEmail.includes('@') ? preset.senderEmail : emailConfig.senderEmail,
+                              });
+                            }}
+                            className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
+                              isSelected
+                                ? 'bg-blue-600/25 border-blue-500 text-white shadow-sm shadow-blue-500/10'
+                                : 'bg-white/5 border-white/10 text-slate-400 hover:bg-white/10 hover:text-slate-200'
+                            }`}
+                          >
+                            {preset.name}
+                          </button>
+                        );
+                      })}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onSaveEmailConfig({
+                            ...emailConfig,
+                            smtpHost: '',
+                            smtpPort: 587,
+                            smtpUser: '',
+                            smtpPass: '',
+                          });
+                        }}
+                        className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
+                          !['smtp.gmail.com', 'smtp.office365.com', 'smtp.mail.yahoo.com', 'smtp.sendgrid.net', 'smtp.mailgun.org', 'smtp-relay.brevo.com'].includes(emailConfig.smtpHost)
+                            ? 'bg-purple-600/25 border-purple-500 text-white shadow-sm shadow-purple-500/10'
+                            : 'bg-white/5 border-white/10 text-slate-400 hover:bg-white/10 hover:text-slate-200'
+                        }`}
+                      >
+                        Custom/Manual
+                      </button>
+                    </div>
+
+                    {/* Show dynamic preset instructions */}
+                    {[
+                      {
+                        host: 'smtp.gmail.com',
+                        port: 465,
+                        name: 'Gmail / Google Workspace',
+                        help: 'Gmail requires a 16-character App Password (not your primary password). To set up: 1. Sign in to your Google Account. 2. Go to Security. 3. Turn on 2-Step Verification. 4. In the search box, search for "App passwords". 5. Select App: "Other", give it a name like "Photobooth", click Generate. 6. Copy the 16-character code (no spaces) and paste it into the SMTP Password field below.'
+                      },
+                      {
+                        host: 'smtp.office365.com',
+                        port: 587,
+                        name: 'Outlook / Office 365',
+                        help: 'If your account uses Multi-Factor Authentication (MFA), you must generate an App Password in your Microsoft Account Security settings. Set Host to smtp.office365.com and Port to 587.'
+                      },
+                      {
+                        host: 'smtp.mail.yahoo.com',
+                        port: 465,
+                        name: 'Yahoo Mail',
+                        help: 'Yahoo Mail blocks standard login. Go to Yahoo Account Info > Account Security > Generate App Password. Copy the resulting code and use it as your password.'
+                      },
+                      {
+                        host: 'smtp.sendgrid.net',
+                        port: 587,
+                        name: 'SendGrid',
+                        help: 'For SendGrid, the SMTP Username MUST be literally "apikey". The SMTP Password must be your full API Key (starts with "SG."). Make sure your Sender Email is verified in SendGrid.'
+                      },
+                      {
+                        host: 'smtp.mailgun.org',
+                        port: 587,
+                        name: 'Mailgun',
+                        help: 'Verify if your domain is EU or US. Use "smtp.mailgun.org" for US or "smtp.eu.mailgun.org" for EU. Obtain username/password from Mailgun Sending > Domain Settings.'
+                      },
+                      {
+                        host: 'smtp-relay.brevo.com',
+                        port: 587,
+                        name: 'Brevo (Sendinblue)',
+                        help: 'SMTP Host: smtp-relay.brevo.com, Port: 587. Username is your Brevo login email. Password is the SMTP Master Key from your Brevo Dashboard under SMTP & API.'
+                      }
+                    ].map((preset) => {
+                      if (emailConfig.smtpHost === preset.host && emailConfig.smtpPort === preset.port) {
+                        return (
+                          <div key={preset.host} className="mt-2.5 p-3.5 bg-blue-500/10 border border-blue-500/20 rounded-xl text-xs text-slate-300 leading-relaxed animate-fade-in">
+                            <strong className="text-blue-400 block mb-1">💡 Setup Guide for {preset.name}:</strong>
+                            {preset.help}
+                          </div>
+                        );
+                      }
+                      return null;
+                    })}
+                  </div>
+
                   <div className="grid grid-cols-2 gap-4">
                     <div className="flex flex-col gap-1.5">
                       <label className="text-xs text-slate-400 font-bold">Sender Name</label>
