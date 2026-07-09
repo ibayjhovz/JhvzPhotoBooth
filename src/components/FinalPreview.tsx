@@ -4,6 +4,7 @@ import { CompanionStatus, EventFrame, PhotoboothEvent, Session, AppSettings, Ema
 import QRCode from 'qrcode';
 import { getOrCreateFolder, uploadPhotostripToDrive } from '../utils/googleDrive';
 import { uploadToPublicFallback } from '../utils/publicUpload';
+import { compressBase64Image } from '../utils/imageCompression';
 
 interface FinalPreviewProps {
   photostripUrl: string;
@@ -187,6 +188,18 @@ export default function FinalPreview({
 
       setIsUploading(false);
 
+      // Compress the photostrip to a lightweight JPEG (around 40KB-80KB) for permanent database & offline storage.
+      // This prevents Firestore document size limit failures (1MB) and LocalStorage quota exhaustion,
+      // while guaranteeing that the photos remain visible in the gallery permanently across browser sessions.
+      let compressedStrip = '';
+      try {
+        compressedStrip = await compressBase64Image(photostripUrl, 450, 1350, 0.75);
+        console.log('[COMPRESSION] Successfully compressed photostrip. Base64 length:', compressedStrip.length);
+      } catch (cErr) {
+        console.error('[COMPRESSION] Failed to compress, using original:', cErr);
+        compressedStrip = photostripUrl;
+      }
+
       // 5. Create and save session
       const newSession: Session = {
         id: sessionId,
@@ -195,7 +208,7 @@ export default function FinalPreview({
         guestName,
         frameId: selectedFrame.id,
         photos: [], // filled if we store raw files
-        photostripUrl: qrLink || `${sharingOrigin}/?download=${uploadedStripId}` || photostripUrl,
+        photostripUrl: compressedStrip || qrLink || photostripUrl,
         printed: false,
         emailed: false,
         printCount: 0,
