@@ -58,6 +58,7 @@ export interface CompanionStatus {
   totalPrints: number;
   totalEmails: number;
   devMode: boolean;
+  defaultSmtpConfigured?: boolean;
 }
 
 export interface EmailConfig {

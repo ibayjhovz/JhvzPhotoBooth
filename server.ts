@@ -6,6 +6,28 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { createServer as createViteServer } from 'vite';
 import nodemailer from 'nodemailer';
 
+// Helper to determine active SMTP configuration with environment variable fallbacks
+function getEffectiveSmtpConfig(config: any) {
+  const host = config?.smtpHost || process.env.SMTP_HOST || '';
+  const port = Number(config?.smtpPort) || Number(process.env.SMTP_PORT) || 587;
+  const user = config?.smtpUser || process.env.SMTP_USER || '';
+  const pass = config?.smtpPass || process.env.SMTP_PASS || '';
+  const senderName = config?.senderName || process.env.SMTP_SENDER_NAME || 'Remix Photobooth';
+  const senderEmail = config?.senderEmail || process.env.SMTP_SENDER_EMAIL || user;
+  const deliveryStrategy = config?.deliveryStrategy || 'smtp';
+
+  return {
+    host,
+    port,
+    user,
+    pass,
+    senderName,
+    senderEmail,
+    deliveryStrategy,
+    isValid: !!(host && user)
+  };
+}
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -119,7 +141,10 @@ async function startServer() {
   function broadcastStatus() {
     const payload = JSON.stringify({
       type: 'status:sync',
-      status: stats
+      status: {
+        ...stats,
+        defaultSmtpConfigured: !!(process.env.SMTP_HOST && process.env.SMTP_USER)
+      }
     });
     wss.clients.forEach((client) => {
       if (client.readyState === WebSocket.OPEN) {
@@ -134,7 +159,10 @@ async function startServer() {
     // Sync current hardware status immediately
     ws.send(JSON.stringify({
       type: 'status:sync',
-      status: stats
+      status: {
+        ...stats,
+        defaultSmtpConfigured: !!(process.env.SMTP_HOST && process.env.SMTP_USER)
+      }
     }));
 
     ws.on('message', (message: string) => {
@@ -179,12 +207,13 @@ async function startServer() {
             return;
           }
 
-          console.log(`[SMTP SPOOL] Dispatched photostrip mail request to: ${email} using strategy: ${config?.deliveryStrategy || 'smtp'}`);
+          const effectiveSmtp = getEffectiveSmtpConfig(config);
+          console.log(`[SMTP SPOOL] Dispatched photostrip mail request to: ${email} using strategy: ${effectiveSmtp.deliveryStrategy}`);
           stats.totalEmails += 1;
           saveStats();
           broadcastStatus();
 
-          const strategy = config?.deliveryStrategy || 'smtp';
+          const strategy = effectiveSmtp.deliveryStrategy;
 
           if (strategy === 'simulated') {
             console.log(`[SMTP SIMULATED] Strategy is simulated. Sending instant success to client for: ${email}`);
@@ -203,15 +232,15 @@ async function startServer() {
           }
 
           // Default SMTP strategy
-          if (config && config.smtpHost && config.smtpUser) {
-            console.log(`[SMTP SENDER] Initializing SMTP transport for ${config.smtpHost}:${config.smtpPort}`);
+          if (effectiveSmtp.isValid) {
+            console.log(`[SMTP SENDER] Initializing SMTP transport for ${effectiveSmtp.host}:${effectiveSmtp.port}`);
             const transporter = nodemailer.createTransport({
-              host: config.smtpHost,
-              port: Number(config.smtpPort) || 587,
-              secure: Number(config.smtpPort) === 465,
+              host: effectiveSmtp.host,
+              port: effectiveSmtp.port,
+              secure: effectiveSmtp.port === 465,
               auth: {
-                user: config.smtpUser,
-                pass: config.smtpPass,
+                user: effectiveSmtp.user,
+                pass: effectiveSmtp.pass,
               },
               tls: {
                 rejectUnauthorized: false
@@ -223,7 +252,7 @@ async function startServer() {
             const imageBuffer = Buffer.from(base64Data, 'base64');
 
             const mailOptions = {
-              from: `"${config.senderName}" <${config.senderEmail || config.smtpUser}>`,
+              from: `"${effectiveSmtp.senderName}" <${effectiveSmtp.senderEmail}>`,
               to: email,
               subject: subject,
               text: `${body}\n\nEnjoy your high-resolution photostrip!`,
@@ -255,16 +284,17 @@ async function startServer() {
         } else if (payload.type === 'email:test') {
           const config = payload.config;
           const recipient = payload.recipient;
-          console.log(`[SMTP TEST] Starting connection test to ${config?.smtpHost} for recipient ${recipient}`);
+          const effectiveSmtp = getEffectiveSmtpConfig(config);
+          console.log(`[SMTP TEST] Starting connection test to ${effectiveSmtp.host} for recipient ${recipient}`);
           
-          if (config && config.smtpHost && config.smtpUser) {
+          if (effectiveSmtp.isValid) {
             const transporter = nodemailer.createTransport({
-              host: config.smtpHost,
-              port: Number(config.smtpPort) || 587,
-              secure: Number(config.smtpPort) === 465,
+              host: effectiveSmtp.host,
+              port: effectiveSmtp.port,
+              secure: effectiveSmtp.port === 465,
               auth: {
-                user: config.smtpUser,
-                pass: config.smtpPass,
+                user: effectiveSmtp.user,
+                pass: effectiveSmtp.pass,
               },
               tls: {
                 rejectUnauthorized: false
@@ -272,7 +302,7 @@ async function startServer() {
             });
 
             const mailOptions = {
-              from: `"${config.senderName}" <${config.senderEmail || config.smtpUser}>`,
+              from: `"${effectiveSmtp.senderName}" <${effectiveSmtp.senderEmail}>`,
               to: recipient,
               subject: 'Photobooth Pro SMTP Connection Test ✅',
               text: 'This is a successful connection test email from your Photobooth Pro Kiosk! Your outgoing SMTP pathway is active and secure.'

@@ -466,8 +466,36 @@ export default function FinalPreview({
                           </div>
                         )}
                         {emailStatus === 'sent' && (
-                          <div className="flex items-center gap-1 text-xs text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-lg">
-                            <CheckCircle className="w-3.5 h-3.5 fill-none" /> Delivered!
+                          <div className="flex flex-col gap-1.5 items-end">
+                            {isLastEmailSimulated ? (
+                              <>
+                                <div className="flex items-center gap-1 text-[11px] text-amber-400 font-bold bg-amber-500/10 border border-amber-500/20 px-2.5 py-1.5 rounded-lg">
+                                  <AlertTriangle className="w-3.5 h-3.5" /> Simulated (SMTP Incomplete)
+                                </div>
+                                <div className="flex gap-1.5 mt-1">
+                                  <a
+                                    href={getMailtoUrl(guestEmail)}
+                                    className="px-2.5 py-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 text-[10px] font-extrabold rounded-md transition-all flex items-center gap-1 shadow-md"
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    id="btn-simulated-mailto"
+                                  >
+                                    <Mail className="w-2.5 h-2.5" /> Send Real Email via Webmail
+                                  </a>
+                                  <button
+                                    onClick={handleCopyLink}
+                                    className="px-2 py-1.5 bg-blue-500/15 hover:bg-blue-500/25 border border-blue-500/30 text-blue-300 text-[10px] font-extrabold rounded-md transition-all"
+                                    id="btn-simulated-copy"
+                                  >
+                                    {copiedLink ? 'Copied!' : 'Copy Link'}
+                                  </button>
+                                </div>
+                              </>
+                            ) : (
+                              <div className="flex items-center gap-1 text-xs text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-lg">
+                                <CheckCircle className="w-3.5 h-3.5 fill-none" /> Delivered!
+                              </div>
+                            )}
                           </div>
                         )}
                         {emailStatus === 'error' && (
@@ -570,8 +598,36 @@ export default function FinalPreview({
                           <Loader2 className="w-3.5 h-3.5 animate-spin" /> Sending...
                         </div>
                       ) : emailStatus === 'sent' ? (
-                        <div className="flex items-center gap-1 text-xs text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-lg shrink-0">
-                          <CheckCircle className="w-3.5 h-3.5 fill-none" /> Sent!
+                        <div className="flex flex-col gap-1.5 items-end shrink-0">
+                          {isLastEmailSimulated ? (
+                            <>
+                              <div className="flex items-center gap-1 text-[10px] text-amber-400 font-bold bg-amber-500/10 border border-amber-500/20 px-2 py-1 rounded-lg">
+                                <AlertTriangle className="w-3 h-3" /> Simulated Success
+                              </div>
+                              <div className="flex gap-1.5 mt-0.5">
+                                <a
+                                  href={getMailtoUrl(customEmail)}
+                                  className="px-2 py-1 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 text-[10px] font-extrabold rounded-md transition-all flex items-center gap-1"
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  id="btn-spot-simulated-mailto"
+                                >
+                                  <Mail className="w-2.5 h-2.5" /> Webmail Draft
+                                </a>
+                                <button
+                                  onClick={handleCopyLink}
+                                  className="px-2 py-1 bg-blue-500/15 hover:bg-blue-500/25 border border-blue-500/30 text-blue-300 text-[10px] font-extrabold rounded-md transition-all"
+                                  id="btn-spot-simulated-copy"
+                                >
+                                  {copiedLink ? 'Copied!' : 'Copy'}
+                                </button>
+                              </div>
+                            </>
+                          ) : (
+                            <div className="flex items-center gap-1 text-xs text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-lg">
+                              <CheckCircle className="w-3.5 h-3.5 fill-none" /> Sent!
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <div className="flex gap-1.5 shrink-0">

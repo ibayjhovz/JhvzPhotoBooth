@@ -210,7 +210,7 @@ export default function AdminDashboard({
     if (!testEmailAddress.trim()) return;
     setTestEmailStatus('sending');
 
-    const hasSmtpConfig = emailConfig && emailConfig.smtpHost && emailConfig.smtpUser;
+    const hasSmtpConfig = (emailConfig && emailConfig.smtpHost && emailConfig.smtpUser) || companionStatus.defaultSmtpConfigured;
 
     if (wsSocket && wsSocket.readyState === WebSocket.OPEN) {
       wsSocket.send(JSON.stringify({
@@ -716,6 +716,9 @@ export default function AdminDashboard({
                 }`}>
                   <div className="flex justify-between items-center">
                     <h3 className="text-sm font-black tracking-wider uppercase text-blue-300">SMTP Server Configuration</h3>
+                    {companionStatus.defaultSmtpConfigured && (
+                      <span className="text-[10px] bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded text-emerald-400 font-extrabold uppercase animate-pulse">Default Fallback Active ✅</span>
+                    )}
                     {(emailConfig.deliveryStrategy || 'smtp') !== 'smtp' && (
                       <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded text-slate-400 font-extrabold uppercase">Inactive in current strategy</span>
                     )}

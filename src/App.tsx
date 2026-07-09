@@ -98,6 +98,7 @@ export default function App() {
     totalPrints: 15,
     totalEmails: 12,
     devMode: true,
+    defaultSmtpConfigured: false,
   });
 
   // Helper to safely write to localStorage without crashing
