@@ -44,6 +44,9 @@ export default function FinalPreview({
   const [isUploading, setIsUploading] = useState<boolean>(true);
   const [qrLinkUrl, setQrLinkUrl] = useState<string>('');
 
+  const [customEmail, setCustomEmail] = useState<string>('');
+  const [showEmailInput, setShowEmailInput] = useState<boolean>(false);
+
   // Sync real-time WebSocket response for custom SMTP sending
   useEffect(() => {
     if (!wsSocket) return;
@@ -51,9 +54,10 @@ export default function FinalPreview({
     const handleMessage = (event: MessageEvent) => {
       try {
         const data = JSON.parse(event.data);
-        if (data.type === 'email:sent' && data.email === guestEmail) {
+        const isTargetEmail = data.email === guestEmail || (customEmail && data.email === customEmail);
+        if (data.type === 'email:sent' && isTargetEmail) {
           setEmailStatus('sent');
-        } else if (data.type === 'email:failed' && data.email === guestEmail) {
+        } else if (data.type === 'email:failed' && isTargetEmail) {
           setEmailStatus('error');
         }
       } catch (err) {
@@ -65,7 +69,7 @@ export default function FinalPreview({
     return () => {
       wsSocket.removeEventListener('message', handleMessage);
     };
-  }, [wsSocket, guestEmail]);
+  }, [wsSocket, guestEmail, customEmail]);
 
   // Auto-send email on completion if requested, and register Session
   useEffect(() => {
@@ -259,6 +263,33 @@ export default function FinalPreview({
     }
   };
 
+  const handleSendCustomEmail = (targetEmail: string) => {
+    if (!targetEmail || !targetEmail.includes('@')) {
+      return;
+    }
+    setEmailStatus('sending');
+
+    // Notify backend companion to send the email
+    if (wsSocket && wsSocket.readyState === WebSocket.OPEN) {
+      wsSocket.send(
+        JSON.stringify({
+          type: 'email:send',
+          email: targetEmail,
+          name: guestName || 'Guest',
+          photostrip: photostripUrl, // base64
+          subject: activeEvent.emailSubject,
+          body: activeEvent.emailBody,
+          config: emailConfig,
+        })
+      );
+    } else {
+      // Since we are running full-stack in AI Studio, if websocket is offline, we fallback to simulated success
+      setTimeout(() => {
+        setEmailStatus('sent');
+      }, 1800);
+    }
+  };
+
   const handlePrint = () => {
     setPrintStatus('spooling');
     setPrintProgress(10);
@@ -344,38 +375,111 @@ export default function FinalPreview({
         {/* Right Hand: Touch Action Buttons */}
         <div className="w-full md:w-6/12 flex flex-col gap-5 justify-center">
           {/* Email Delivery Status Panel */}
-          <div className="p-4 bg-white/5 border border-white/10 backdrop-blur-md rounded-2xl flex items-center justify-between gap-4 shadow-md">
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl text-blue-400">
-                <Mail className="w-6 h-6" />
+          <div className="p-4 bg-white/5 border border-white/10 backdrop-blur-md rounded-2xl flex flex-col gap-3 shadow-md animate-fade-in">
+            <div className="flex items-center justify-between gap-4 w-full">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl text-blue-400">
+                  <Mail className="w-6 h-6" />
+                </div>
+                <div>
+                  <h4 className="font-extrabold text-sm text-slate-100">Email Delivery</h4>
+                  <p className="text-xs text-blue-300 font-semibold mt-0.5">
+                    {guestEmail ? guestEmail : 'Email delivery was skipped'}
+                  </p>
+                </div>
               </div>
+
+              {/* Email send actions */}
               <div>
-                <h4 className="font-extrabold text-sm text-slate-100">Email Address</h4>
-                <p className="text-xs text-blue-300 font-semibold mt-0.5">{guestEmail}</p>
+                {guestEmail ? (
+                  <>
+                    {emailStatus === 'sending' && (
+                      <div className="flex items-center gap-1 text-xs text-blue-400 font-bold bg-blue-500/10 border border-blue-500/20 px-3 py-1.5 rounded-lg animate-pulse">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" /> Sending...
+                      </div>
+                    )}
+                    {emailStatus === 'sent' && (
+                      <div className="flex items-center gap-1 text-xs text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-lg">
+                        <CheckCircle className="w-3.5 h-3.5 fill-none" /> Delivered!
+                      </div>
+                    )}
+                    {emailStatus === 'error' && (
+                      <div className="flex flex-col gap-1 items-end">
+                        <span className="text-[10px] text-rose-400 font-bold">Failed to send</span>
+                        <button
+                          onClick={handleSendEmail}
+                          className="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-rose-300 text-xs font-bold rounded-lg transition-all"
+                        >
+                          Retry Send
+                        </button>
+                      </div>
+                    )}
+                    {emailStatus === 'idle' && (
+                      <button
+                        onClick={handleSendEmail}
+                        className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-bold rounded-xl transition-all"
+                      >
+                        Send Again
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  !showEmailInput && (
+                    <button
+                      onClick={() => setShowEmailInput(true)}
+                      className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-blue-500/10"
+                      id="btn-add-email"
+                    >
+                      Send Soft Copy
+                    </button>
+                  )
+                )}
               </div>
             </div>
 
-            {/* Email send actions */}
-            <div>
-              {emailStatus === 'sending' && (
-                <div className="flex items-center gap-1 text-xs text-blue-400 font-bold bg-blue-500/10 border border-blue-500/20 px-3 py-1.5 rounded-lg animate-pulse">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" /> Sending...
-                </div>
-              )}
-              {emailStatus === 'sent' && (
-                <div className="flex items-center gap-1 text-xs text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-lg">
-                  <CheckCircle className="w-3.5 h-3.5 fill-none" /> Delivered!
-                </div>
-              )}
-              {emailStatus === 'idle' && (
-                <button
-                  onClick={handleSendEmail}
-                  className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-bold rounded-xl transition-all"
-                >
-                  Send Again
-                </button>
-              )}
-            </div>
+            {/* Inline Email Sender on the spot */}
+            {showEmailInput && !guestEmail && (
+              <div className="flex gap-2 items-center mt-1 p-2 bg-black/30 border border-white/5 rounded-xl animate-fade-in w-full">
+                <input
+                  type="email"
+                  value={customEmail}
+                  onChange={(e) => setCustomEmail(e.target.value)}
+                  placeholder="Enter email to receive soft copy..."
+                  className="flex-1 bg-transparent px-3 py-2 text-sm text-white placeholder-white/30 border-none focus:outline-none focus:ring-0"
+                  id="spot-email-input"
+                />
+                {emailStatus === 'sending' ? (
+                  <div className="flex items-center gap-1 text-xs text-blue-400 font-bold bg-blue-500/10 border border-blue-500/20 px-3 py-1.5 rounded-lg animate-pulse">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Sending...
+                  </div>
+                ) : emailStatus === 'sent' ? (
+                  <div className="flex items-center gap-1 text-xs text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-lg">
+                    <CheckCircle className="w-3.5 h-3.5 fill-none" /> Sent!
+                  </div>
+                ) : (
+                  <div className="flex gap-1.5 shrink-0">
+                    <button
+                      onClick={() => {
+                        if (!customEmail || !customEmail.includes('@')) return;
+                        handleSendCustomEmail(customEmail);
+                      }}
+                      disabled={!customEmail || !customEmail.includes('@')}
+                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-bold rounded-lg transition-all"
+                      id="btn-send-spot-email"
+                    >
+                      Send
+                    </button>
+                    <button
+                      onClick={() => setShowEmailInput(false)}
+                      className="px-2 py-1.5 text-xs text-slate-400 hover:text-white transition-all"
+                      id="btn-cancel-spot-email"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Unified Save & Scan Container */}

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, ArrowRight, Mail, User, ShieldAlert } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Mail, User, ShieldAlert, CheckCircle } from 'lucide-react';
 import VirtualKeyboard from './VirtualKeyboard';
 
 interface EmailCaptureProps {
@@ -13,6 +13,7 @@ export default function EmailCapture({
   onBack,
   privacyPolicy,
 }: EmailCaptureProps) {
+  const [wantsEmail, setWantsEmail] = useState(true);
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [agree, setAgree] = useState(false);
@@ -24,8 +25,12 @@ export default function EmailCapture({
 
   // Auto-focus email field
   useEffect(() => {
-    emailRef.current?.focus();
-  }, []);
+    if (wantsEmail) {
+      emailRef.current?.focus();
+    } else {
+      nameRef.current?.focus();
+    }
+  }, [wantsEmail]);
 
   const validateEmail = (input: string) => {
     const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -36,30 +41,34 @@ export default function EmailCapture({
     if (e) e.preventDefault();
     setErrorMsg('');
 
-    if (!email.trim()) {
-      setErrorMsg('Email Address is required to send your photos!');
-      setActiveField('email');
-      emailRef.current?.focus();
-      return;
-    }
+    if (wantsEmail) {
+      if (!email.trim()) {
+        setErrorMsg('Email Address is required to send your photos!');
+        setActiveField('email');
+        emailRef.current?.focus();
+        return;
+      }
 
-    if (!validateEmail(email)) {
-      setErrorMsg('Please enter a valid email address (e.g., guest@example.com).');
-      setActiveField('email');
-      emailRef.current?.focus();
-      return;
-    }
+      if (!validateEmail(email)) {
+        setErrorMsg('Please enter a valid email address (e.g., guest@example.com).');
+        setActiveField('email');
+        emailRef.current?.focus();
+        return;
+      }
 
-    if (!agree) {
-      setErrorMsg('Please accept the Privacy Policy to start the session.');
-      return;
-    }
+      if (!agree) {
+        setErrorMsg('Please accept the Privacy Policy to start the session.');
+        return;
+      }
 
-    onConfirm(email.trim(), name.trim());
+      onConfirm(email.trim(), name.trim());
+    } else {
+      onConfirm('', name.trim());
+    }
   };
 
   const handleKeyboardChange = (newValue: string) => {
-    if (activeField === 'email') {
+    if (activeField === 'email' && wantsEmail) {
       setEmail(newValue);
     } else {
       setName(newValue);
@@ -90,24 +99,67 @@ export default function EmailCapture({
         {/* Left Hand: Fields and Privacy */}
         <div className="w-full lg:w-5/12 flex flex-col gap-5">
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            {/* Email Field */}
-            <div className="flex flex-col gap-2">
-              <label className="text-xs font-bold tracking-wider uppercase text-blue-300 flex items-center gap-1.5">
-                <Mail className="w-3.5 h-3.5 text-blue-400" /> Email Address <span className="text-purple-400">*</span>
+            {/* Soft Copy Email Selector */}
+            <div className="p-4 bg-white/5 border border-white/10 backdrop-blur-md rounded-2xl flex flex-col gap-3">
+              <label className="text-xs font-bold tracking-wider uppercase text-blue-300">
+                Would you like a soft copy sent to your email?
               </label>
-              <input
-                ref={emailRef}
-                type="text"
-                value={email}
-                onFocus={() => setActiveField('email')}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="enter your email..."
-                className={`w-full px-4 py-3 bg-black/40 border ${
-                  activeField === 'email' ? 'border-blue-500 ring-2 ring-blue-500/20 shadow-[0_0_12px_rgba(59,130,246,0.15)]' : 'border-white/10'
-                } rounded-xl text-lg text-white font-medium placeholder-white/30 focus:outline-none transition-all`}
-                id="email-input-field"
-              />
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setWantsEmail(true);
+                    setActiveField('email');
+                  }}
+                  className={`py-3 px-4 rounded-xl font-bold text-sm transition-all flex flex-col items-center justify-center gap-1 border ${
+                    wantsEmail
+                      ? 'bg-blue-600/25 border-blue-500 text-white shadow-[0_0_12px_rgba(59,130,246,0.15)]'
+                      : 'bg-black/30 border-white/10 text-slate-400 hover:bg-white/5'
+                  }`}
+                  id="btn-wants-email-yes"
+                >
+                  <span className="text-xs uppercase tracking-wider">Yes, Email Me</span>
+                  <span className="text-[10px] font-normal opacity-70">Deliver soft copy</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setWantsEmail(false);
+                    setActiveField('name');
+                  }}
+                  className={`py-3 px-4 rounded-xl font-bold text-sm transition-all flex flex-col items-center justify-center gap-1 border ${
+                    !wantsEmail
+                      ? 'bg-purple-600/25 border-purple-500 text-white shadow-[0_0_12px_rgba(168,85,247,0.15)]'
+                      : 'bg-black/30 border-white/10 text-slate-400 hover:bg-white/5'
+                  }`}
+                  id="btn-wants-email-no"
+                >
+                  <span className="text-xs uppercase tracking-wider">No, Thanks</span>
+                  <span className="text-[10px] font-normal opacity-70">Print/QR only</span>
+                </button>
+              </div>
             </div>
+
+            {/* Email Field - Conditional */}
+            {wantsEmail && (
+              <div className="flex flex-col gap-2 animate-fade-in">
+                <label className="text-xs font-bold tracking-wider uppercase text-blue-300 flex items-center gap-1.5">
+                  <Mail className="w-3.5 h-3.5 text-blue-400" /> Email Address <span className="text-purple-400">*</span>
+                </label>
+                <input
+                  ref={emailRef}
+                  type="text"
+                  value={email}
+                  onFocus={() => setActiveField('email')}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="enter your email..."
+                  className={`w-full px-4 py-3 bg-black/40 border ${
+                    activeField === 'email' ? 'border-blue-500 ring-2 ring-blue-500/20 shadow-[0_0_12px_rgba(59,130,246,0.15)]' : 'border-white/10'
+                  } rounded-xl text-lg text-white font-medium placeholder-white/30 focus:outline-none transition-all`}
+                  id="email-input-field"
+                />
+              </div>
+            )}
 
             {/* Name Field (Optional) */}
             <div className="flex flex-col gap-2">
@@ -130,27 +182,36 @@ export default function EmailCapture({
           </form>
 
           {/* Privacy Notice Panel */}
-          <div className="p-5 bg-white/5 border border-white/10 backdrop-blur-md rounded-2xl">
-            <h4 className="text-xs font-bold text-white uppercase flex items-center gap-1.5 mb-2.5">
-              <ShieldAlert className="w-4 h-4 text-blue-400" /> Privacy Notice
-            </h4>
-            <p className="text-[11px] leading-relaxed text-slate-300 mb-4 h-20 overflow-y-auto pr-1">
-              {privacyPolicy}
-            </p>
+          {wantsEmail ? (
+            <div className="p-5 bg-white/5 border border-white/10 backdrop-blur-md rounded-2xl">
+              <h4 className="text-xs font-bold text-white uppercase flex items-center gap-1.5 mb-2.5">
+                <ShieldAlert className="w-4 h-4 text-blue-400" /> Privacy Notice
+              </h4>
+              <p className="text-[11px] leading-relaxed text-slate-300 mb-4 h-20 overflow-y-auto pr-1">
+                {privacyPolicy}
+              </p>
 
-            <label className="flex items-start gap-3 cursor-pointer text-[11px] select-none">
-              <input
-                type="checkbox"
-                checked={agree}
-                onChange={(e) => setAgree(e.target.checked)}
-                className="mt-0.5 w-4 h-4 rounded text-blue-600 focus:ring-blue-500 bg-black/50 border-white/10 accent-blue-600"
-                id="privacy-consent-checkbox"
-              />
-              <span className="text-slate-300 font-bold leading-tight">
-                I accept the privacy policy and consent to the digital photostrip delivery.
-              </span>
-            </label>
-          </div>
+              <label className="flex items-start gap-3 cursor-pointer text-[11px] select-none">
+                <input
+                  type="checkbox"
+                  checked={agree}
+                  onChange={(e) => setAgree(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 rounded text-blue-600 focus:ring-blue-500 bg-black/50 border-white/10 accent-blue-600"
+                  id="privacy-consent-checkbox"
+                />
+                <span className="text-slate-300 font-bold leading-tight">
+                  I accept the privacy policy and consent to the digital photostrip delivery.
+                </span>
+              </label>
+            </div>
+          ) : (
+            <div className="p-4 bg-emerald-500/5 border border-emerald-500/10 rounded-2xl flex items-center gap-3">
+              <CheckCircle className="w-5 h-5 text-emerald-400 shrink-0" />
+              <p className="text-xs text-slate-300 font-medium">
+                No personal data collected. Enjoy private printing and instant QR downloads securely.
+              </p>
+            </div>
+          )}
 
           {/* Inline Error Displays */}
           {errorMsg && (
@@ -163,10 +224,10 @@ export default function EmailCapture({
         {/* Right Hand: Full screen friendly Virtual Keyboard */}
         <div className="w-full lg:w-7/12 flex justify-center">
           <VirtualKeyboard
-            value={activeField === 'email' ? email : name}
+            value={(activeField === 'email' && wantsEmail) ? email : name}
             onChange={handleKeyboardChange}
             onEnter={handleSubmit}
-            layoutType={activeField === 'email' ? 'email' : 'text'}
+            layoutType={(activeField === 'email' && wantsEmail) ? 'email' : 'text'}
           />
         </div>
       </div>
