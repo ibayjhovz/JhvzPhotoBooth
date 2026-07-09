@@ -1,6 +1,61 @@
 import React, { useState } from 'react';
 import { EventFrame } from '../types';
-import { Grid, Layers, CheckCircle, ArrowRight, ArrowLeft } from 'lucide-react';
+import { Grid, Layers, CheckCircle, ArrowRight, ArrowLeft, Smile, Sparkles, Heart, Camera, PartyPopper, Users } from 'lucide-react';
+
+const getFrameOrientation = (frame: EventFrame): 'portrait' | 'landscape' | 'square' => {
+  if (frame.id.includes('portrait')) return 'portrait';
+  if (frame.id.includes('landscape')) return 'landscape';
+  if (frame.id.includes('square')) return 'square';
+  
+  // Fallback: estimate from slot dimensions
+  const firstSlot = frame.slots[0];
+  if (!firstSlot) return 'portrait';
+  
+  if (firstSlot.width < 95 && firstSlot.height < 25) return 'portrait'; // portrait strip
+  if (frame.slots.length === 1) return 'square'; // polaroid square
+  if (firstSlot.width > 50 && firstSlot.height > 50) return 'square';
+  return 'landscape';
+};
+
+const getSamplePhotoForSlot = (slotId: number, frameId: string) => {
+  // We can use Unsplash curated, optimized portrait photos of friends, couples, or fun expressions
+  const photos = [
+    {
+      type: 'image',
+      url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80', // Happy woman
+      gradient: 'from-amber-400 to-rose-500',
+      icon: Smile,
+    },
+    {
+      type: 'image',
+      url: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=300&q=80', // Smiling woman
+      gradient: 'from-cyan-400 to-blue-500',
+      icon: Sparkles,
+    },
+    {
+      type: 'image',
+      url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80', // Happy man
+      gradient: 'from-purple-500 to-indigo-600',
+      icon: PartyPopper,
+    },
+    {
+      type: 'image',
+      url: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=300&q=80', // Model pose
+      gradient: 'from-rose-500 to-red-600',
+      icon: Heart,
+    },
+    {
+      type: 'image',
+      url: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=300&q=80', // Happy guy
+      gradient: 'from-teal-400 to-emerald-600',
+      icon: Users,
+    }
+  ];
+
+  // Pick index based on slotId and frameId hash to give variety
+  const index = (slotId + frameId.charCodeAt(frameId.length - 1)) % photos.length;
+  return photos[index];
+};
 
 interface FrameSelectionProps {
   frames: EventFrame[];
@@ -113,34 +168,81 @@ export default function FrameSelection({
               >
                 {/* Visual Thumbnail Frame Box */}
                 <div className="relative bg-black/40 flex items-center justify-center p-4 h-56 overflow-hidden border-b border-white/10">
-                  {frame.imageUrl ? (
-                    <img
-                      src={frame.imageUrl}
-                      alt={frame.name}
-                      className="max-h-full max-w-full object-contain rounded-lg shadow-2xl group-hover:scale-105 transition-transform duration-300"
-                      referrerPolicy="no-referrer"
-                    />
-                  ) : (
-                    // Fallback visual representations
-                    <div className={`relative ${isStrip ? 'w-24 h-48' : 'w-44 h-32'} border border-white/10 rounded-xl bg-slate-950 flex flex-col justify-between p-2 shadow-inner`}>
-                      {/* Drawing photo slots */}
-                      {frame.slots.map((slot) => (
-                        <div
-                          key={slot.id}
-                          className="border border-white/10 bg-white/5 rounded-lg flex items-center justify-center text-[8px] font-mono text-slate-400"
-                          style={{
-                            position: 'absolute',
-                            left: `${slot.x}%`,
-                            top: `${slot.y}%`,
-                            width: `${slot.width}%`,
-                            height: `${slot.height}%`,
-                          }}
-                        >
-                          {slot.id}
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  {(() => {
+                    const orientation = getFrameOrientation(frame);
+                    const isPortrait = orientation === 'portrait';
+                    const isLandscape = orientation === 'landscape';
+                    const isSquare = orientation === 'square';
+                    
+                    let sizeClasses = 'w-[170px] h-[170px]';
+                    if (isPortrait) sizeClasses = 'w-[68px] h-[204px]';
+                    if (isLandscape) sizeClasses = 'w-[240px] h-[160px]';
+
+                    return (
+                      <div className={`relative ${sizeClasses} bg-slate-950 border border-white/10 rounded-xl overflow-hidden shadow-2xl group-hover:scale-105 transition-transform duration-300`}>
+                        {/* 1. Behind: Beautiful photo templates/placeholder images */}
+                        {frame.slots.map((slot) => {
+                          const sample = getSamplePhotoForSlot(slot.id, frame.id);
+                          return (
+                            <div
+                              key={slot.id}
+                              className="absolute bg-slate-900 overflow-hidden flex items-center justify-center"
+                              style={{
+                                left: `${slot.x}%`,
+                                top: `${slot.y}%`,
+                                width: `${slot.width}%`,
+                                height: `${slot.height}%`,
+                              }}
+                            >
+                              {/* Background Gradient for elegant load/fallback */}
+                              <div className={`absolute inset-0 bg-gradient-to-tr ${sample.gradient} opacity-50 z-0`} />
+                              
+                              <img
+                                src={sample.url}
+                                alt=""
+                                className="w-full h-full object-cover relative z-10 brightness-95 group-hover:scale-110 transition-transform duration-500"
+                                referrerPolicy="no-referrer"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none';
+                                }}
+                              />
+                              
+                              {/* Fallback Vector Icons */}
+                              <div className="absolute inset-0 flex items-center justify-center z-0 text-white/50">
+                                <sample.icon className="w-1/2 h-1/2 stroke-[1.5]" />
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        {/* 2. On Top: Transparent Overlay (If available) */}
+                        {frame.imageUrl ? (
+                          <img
+                            src={frame.imageUrl}
+                            alt={frame.name}
+                            className="absolute inset-0 w-full h-full object-fill z-20 pointer-events-none"
+                            referrerPolicy="no-referrer"
+                          />
+                        ) : (
+                          /* Otherwise overlay slot boundaries to look like a clean technical blueprint layout */
+                          frame.slots.map((slot) => (
+                            <div
+                              key={`border-${slot.id}`}
+                              className="absolute border border-white/20 bg-transparent flex items-center justify-center text-[10px] font-mono font-black text-white/80 z-20"
+                              style={{
+                                left: `${slot.x}%`,
+                                top: `${slot.y}%`,
+                                width: `${slot.width}%`,
+                                height: `${slot.height}%`,
+                              }}
+                            >
+                              #{slot.id}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {/* Active selected overlay mark */}
                   {isSelected && (
