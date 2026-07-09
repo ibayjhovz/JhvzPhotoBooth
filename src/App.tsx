@@ -131,12 +131,13 @@ export default function App() {
   }, [settings]);
 
   useEffect(() => {
-    // Sanitize sessions to strip heavy base64 data URLs before caching in local storage.
-    // To provide a seamless instant loading experience even when offline, we preserve the full high-res 
-    // photostrip URLs for the most recent 5 sessions, while sanitizing older ones to prevent localStorage quota errors.
-    // Full photostrips are safely persisted and synced in real-time via Firestore and IndexedDB.
+    // Sanitize sessions to strip heavy raw base64 PNG data URLs before caching in local storage.
+    // Highly compressed JPEG data URLs are extremely compact (~30KB-80KB) and are preserved
+    // permanently in local storage for a seamless instant loading experience.
     const sanitized = sessions.map((s, idx) => {
-      if (idx >= 5 && s.photostripUrl && s.photostripUrl.startsWith('data:image')) {
+      // Only sanitize heavy raw PNG images (starts with data:image/png) for sessions beyond the first 5.
+      // Do NOT sanitize compressed JPEGs (starts with data:image/jpeg), URLs, or recent sessions.
+      if (idx >= 5 && s.photostripUrl && s.photostripUrl.startsWith('data:image/png')) {
         return { ...s, photostripUrl: '' };
       }
       return s;
@@ -286,7 +287,48 @@ export default function App() {
         dbSessions.push(doc.data() as Session);
       });
       dbSessions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      setSessions(dbSessions);
+      
+      // Load current local sessions directly from localStorage to safely merge
+      let localSessions: Session[] = [];
+      try {
+        const saved = localStorage.getItem('photobooth_sessions');
+        localSessions = saved ? JSON.parse(saved) : [];
+      } catch (err) {
+        console.warn('[FIRESTORE-SYNC] Error loading local sessions for sync:', err);
+      }
+
+      // If Firestore database is empty but we have local sessions, preserve them
+      if (dbSessions.length === 0 && localSessions.length > 0) {
+        console.log('[FIRESTORE-SYNC] DB is empty, preserving local sessions:', localSessions.length);
+        setSessions(localSessions);
+        
+        // Sync them to Firestore
+        localSessions.forEach((local) => {
+          setDoc(doc(db, 'sessions', local.id), local).catch((err) => {
+            console.error('[FIRESTORE-SYNC] Error backing up local session:', err);
+          });
+        });
+        return;
+      }
+
+      const merged = [...dbSessions];
+      let hasLocalSyncs = false;
+
+      // Sync local-only sessions to Firestore
+      localSessions.forEach((local) => {
+        if (!merged.some((dbS) => dbS.id === local.id)) {
+          merged.push(local);
+          hasLocalSyncs = true;
+          setDoc(doc(db, 'sessions', local.id), local).catch((err) => {
+            console.error('[FIRESTORE-SYNC] Background sync error for session:', local.id, err);
+          });
+        }
+      });
+
+      if (hasLocalSyncs) {
+        merged.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      }
+      setSessions(merged);
     }, (error) => {
       console.error('[FIRESTORE] Sessions subscription error:', error);
     });
