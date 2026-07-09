@@ -69,6 +69,7 @@ export interface EmailConfig {
   smtpPass: string;
   messageTemplate: string;
   logoUrl?: string;
+  deliveryStrategy?: 'smtp' | 'mailto' | 'simulated';
 }
 
 export interface PrinterConfig {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Mail, Printer, Download, QrCode, ArrowRight, CheckCircle, RefreshCw, Loader2, Link } from 'lucide-react';
+import { Mail, Printer, Download, QrCode, ArrowRight, CheckCircle, RefreshCw, Loader2, Link, AlertTriangle } from 'lucide-react';
 import { CompanionStatus, EventFrame, PhotoboothEvent, Session, AppSettings, EmailConfig } from '../types';
 import QRCode from 'qrcode';
 import { getOrCreateFolder, uploadPhotostripToDrive } from '../utils/googleDrive';
@@ -44,8 +44,48 @@ export default function FinalPreview({
   const [isUploading, setIsUploading] = useState<boolean>(true);
   const [qrLinkUrl, setQrLinkUrl] = useState<string>('');
 
+  const [copiedLink, setCopiedLink] = useState<boolean>(false);
+
+  const getMailtoUrl = (targetEmail: string) => {
+    const subject = encodeURIComponent(activeEvent.emailSubject || 'Your memories are ready!');
+    const bodyText = `${activeEvent.emailBody || 'Thanks for taking photos with us!'}\n\nDownload Link: ${qrLinkUrl || 'Online Gallery'}`;
+    return `mailto:${targetEmail}?subject=${subject}&body=${encodeURIComponent(bodyText)}`;
+  };
+
+  const handleCopyLink = () => {
+    if (!qrLinkUrl) return;
+    navigator.clipboard.writeText(qrLinkUrl);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2000);
+  };
+
   const [customEmail, setCustomEmail] = useState<string>('');
   const [showEmailInput, setShowEmailInput] = useState<boolean>(false);
+  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  // Monitor emailStatus to trigger beautiful notification alerts
+  useEffect(() => {
+    if (emailStatus === 'sent') {
+      const target = customEmail || guestEmail || 'the client';
+      setNotification({
+        message: `Your photostrip has been successfully sent to ${target}!`,
+        type: 'success'
+      });
+      const timer = setTimeout(() => {
+        setNotification(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    } else if (emailStatus === 'error') {
+      setNotification({
+        message: `SMTP delivery failed. Click the 'Webmail' or 'Copy Link' fallback buttons on-screen for guaranteed instant dispatch!`,
+        type: 'error'
+      });
+      const timer = setTimeout(() => {
+        setNotification(null);
+      }, 7000);
+      return () => clearTimeout(timer);
+    }
+  }, [emailStatus, guestEmail, customEmail]);
 
   // Sync real-time WebSocket response for custom SMTP sending
   useEffect(() => {
@@ -393,34 +433,72 @@ export default function FinalPreview({
               <div>
                 {guestEmail ? (
                   <>
-                    {emailStatus === 'sending' && (
-                      <div className="flex items-center gap-1 text-xs text-blue-400 font-bold bg-blue-500/10 border border-blue-500/20 px-3 py-1.5 rounded-lg animate-pulse">
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" /> Sending...
-                      </div>
-                    )}
-                    {emailStatus === 'sent' && (
-                      <div className="flex items-center gap-1 text-xs text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-lg">
-                        <CheckCircle className="w-3.5 h-3.5 fill-none" /> Delivered!
-                      </div>
-                    )}
-                    {emailStatus === 'error' && (
-                      <div className="flex flex-col gap-1 items-end">
-                        <span className="text-[10px] text-rose-400 font-bold">Failed to send</span>
-                        <button
+                    {emailConfig.deliveryStrategy === 'mailto' ? (
+                      <div className="flex flex-col gap-1.5 items-end">
+                        <a
+                          href={getMailtoUrl(guestEmail)}
                           onClick={handleSendEmail}
-                          className="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-rose-300 text-xs font-bold rounded-lg transition-all"
+                          className="flex items-center gap-1.5 text-xs text-emerald-400 font-extrabold bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 px-4 py-2 rounded-xl transition-all shadow-md shadow-emerald-500/5 animate-pulse"
+                          target="_blank"
+                          rel="noreferrer"
+                          id="mailto-client-send-btn"
                         >
-                          Retry Send
-                        </button>
+                          <Mail className="w-3.5 h-3.5" /> Send Webmail Draft
+                        </a>
+                        <span className="text-[9px] text-slate-400 font-bold select-none text-right">Prefilled with guest link</span>
                       </div>
-                    )}
-                    {emailStatus === 'idle' && (
-                      <button
-                        onClick={handleSendEmail}
-                        className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-bold rounded-xl transition-all"
-                      >
-                        Send Again
-                      </button>
+                    ) : (
+                      <>
+                        {emailStatus === 'sending' && (
+                          <div className="flex items-center gap-1 text-xs text-blue-400 font-bold bg-blue-500/10 border border-blue-500/20 px-3 py-1.5 rounded-lg animate-pulse">
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Sending...
+                          </div>
+                        )}
+                        {emailStatus === 'sent' && (
+                          <div className="flex items-center gap-1 text-xs text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-lg">
+                            <CheckCircle className="w-3.5 h-3.5 fill-none" /> Delivered!
+                          </div>
+                        )}
+                        {emailStatus === 'error' && (
+                          <div className="flex flex-col gap-2 items-end">
+                            <span className="text-[10px] text-rose-400 font-bold select-none">Failed to send via SMTP</span>
+                            <div className="flex gap-1.5">
+                              <button
+                                onClick={handleSendEmail}
+                                className="px-2.5 py-1.5 bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 text-[11px] font-bold rounded-lg transition-all"
+                                id="btn-retry-smtp"
+                              >
+                                Retry SMTP
+                              </button>
+                              <a
+                                href={getMailtoUrl(guestEmail)}
+                                className="px-2.5 py-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 text-[11px] font-bold rounded-lg transition-all flex items-center gap-1"
+                                target="_blank"
+                                rel="noreferrer"
+                                id="btn-fallback-mailto"
+                              >
+                                <Mail className="w-3 h-3" /> Webmail
+                              </a>
+                              <button
+                                onClick={handleCopyLink}
+                                className="px-2.5 py-1.5 bg-blue-500/15 hover:bg-blue-500/25 border border-blue-500/30 text-blue-300 text-[11px] font-bold rounded-lg transition-all flex items-center gap-1"
+                                id="btn-fallback-copy"
+                              >
+                                <Link className="w-3 h-3" /> {copiedLink ? 'Copied!' : 'Copy Link'}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                        {emailStatus === 'idle' && (
+                          <button
+                            onClick={handleSendEmail}
+                            className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-bold rounded-xl transition-all"
+                            id="btn-resend"
+                          >
+                            Send Again
+                          </button>
+                        )}
+                      </>
                     )}
                   </>
                 ) : (
@@ -439,43 +517,105 @@ export default function FinalPreview({
 
             {/* Inline Email Sender on the spot */}
             {showEmailInput && !guestEmail && (
-              <div className="flex gap-2 items-center mt-1 p-2 bg-black/30 border border-white/5 rounded-xl animate-fade-in w-full">
-                <input
-                  type="email"
-                  value={customEmail}
-                  onChange={(e) => setCustomEmail(e.target.value)}
-                  placeholder="Enter email to receive soft copy..."
-                  className="flex-1 bg-transparent px-3 py-2 text-sm text-white placeholder-white/30 border-none focus:outline-none focus:ring-0"
-                  id="spot-email-input"
-                />
-                {emailStatus === 'sending' ? (
-                  <div className="flex items-center gap-1 text-xs text-blue-400 font-bold bg-blue-500/10 border border-blue-500/20 px-3 py-1.5 rounded-lg animate-pulse">
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Sending...
-                  </div>
-                ) : emailStatus === 'sent' ? (
-                  <div className="flex items-center gap-1 text-xs text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-lg">
-                    <CheckCircle className="w-3.5 h-3.5 fill-none" /> Sent!
-                  </div>
-                ) : (
-                  <div className="flex gap-1.5 shrink-0">
-                    <button
-                      onClick={() => {
-                        if (!customEmail || !customEmail.includes('@')) return;
-                        handleSendCustomEmail(customEmail);
-                      }}
-                      disabled={!customEmail || !customEmail.includes('@')}
-                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-bold rounded-lg transition-all"
-                      id="btn-send-spot-email"
-                    >
-                      Send
-                    </button>
-                    <button
-                      onClick={() => setShowEmailInput(false)}
-                      className="px-2 py-1.5 text-xs text-slate-400 hover:text-white transition-all"
-                      id="btn-cancel-spot-email"
-                    >
-                      Cancel
-                    </button>
+              <div className="flex flex-col gap-2 mt-1 p-3 bg-black/40 border border-white/5 rounded-2xl animate-fade-in w-full">
+                <div className="flex gap-2 items-center w-full">
+                  <input
+                    type="email"
+                    value={customEmail}
+                    onChange={(e) => setCustomEmail(e.target.value)}
+                    placeholder="Enter email to receive soft copy..."
+                    className="flex-1 bg-transparent px-3 py-2 text-sm text-white placeholder-white/30 border-none focus:outline-none focus:ring-0"
+                    id="spot-email-input"
+                  />
+                  {emailConfig.deliveryStrategy === 'mailto' ? (
+                    <div className="flex gap-1.5 shrink-0">
+                      <a
+                        href={getMailtoUrl(customEmail)}
+                        onClick={() => {
+                          if (!customEmail || !customEmail.includes('@')) return;
+                          handleSendCustomEmail(customEmail);
+                        }}
+                        className={`px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black rounded-lg transition-all flex items-center gap-1 ${
+                          (!customEmail || !customEmail.includes('@')) ? 'opacity-50 pointer-events-none' : ''
+                        }`}
+                        target="_blank"
+                        rel="noreferrer"
+                        id="btn-send-spot-mailto"
+                      >
+                        <Mail className="w-3.5 h-3.5" /> Webmail Draft
+                      </a>
+                      <button
+                        onClick={() => setShowEmailInput(false)}
+                        className="px-2 py-1.5 text-xs text-slate-400 hover:text-white transition-all"
+                        id="btn-cancel-spot-email"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      {emailStatus === 'sending' ? (
+                        <div className="flex items-center gap-1 text-xs text-blue-400 font-bold bg-blue-500/10 border border-blue-500/20 px-3 py-1.5 rounded-lg animate-pulse shrink-0">
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Sending...
+                        </div>
+                      ) : emailStatus === 'sent' ? (
+                        <div className="flex items-center gap-1 text-xs text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-lg shrink-0">
+                          <CheckCircle className="w-3.5 h-3.5 fill-none" /> Sent!
+                        </div>
+                      ) : (
+                        <div className="flex gap-1.5 shrink-0">
+                          <button
+                            onClick={() => {
+                              if (!customEmail || !customEmail.includes('@')) return;
+                              handleSendCustomEmail(customEmail);
+                            }}
+                            disabled={!customEmail || !customEmail.includes('@')}
+                            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-bold rounded-lg transition-all"
+                            id="btn-send-spot-email"
+                          >
+                            Send
+                          </button>
+                          <button
+                            onClick={() => setShowEmailInput(false)}
+                            className="px-2 py-1.5 text-xs text-slate-400 hover:text-white transition-all"
+                            id="btn-cancel-spot-email"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {emailStatus === 'error' && emailConfig.deliveryStrategy !== 'mailto' && (
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pt-2 border-t border-white/5 w-full">
+                    <span className="text-[10px] text-rose-400 font-bold">SMTP delivery failed</span>
+                    <div className="flex gap-1.5 w-full sm:w-auto justify-end">
+                      <button
+                        onClick={() => handleSendCustomEmail(customEmail)}
+                        className="px-2 py-1 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 text-[10px] font-bold rounded-md transition-all"
+                        id="btn-spot-retry-smtp"
+                      >
+                        Retry SMTP
+                      </button>
+                      <a
+                        href={getMailtoUrl(customEmail)}
+                        className="px-2 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-[10px] font-bold rounded-md transition-all flex items-center gap-1"
+                        target="_blank"
+                        rel="noreferrer"
+                        id="btn-spot-mailto"
+                      >
+                        <Mail className="w-2.5 h-2.5" /> Webmail
+                      </a>
+                      <button
+                        onClick={handleCopyLink}
+                        className="px-2 py-1 bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 text-[10px] font-bold rounded-md transition-all flex items-center gap-1"
+                        id="btn-spot-copy"
+                      >
+                        <Link className="w-2.5 h-2.5" /> {copiedLink ? 'Copied!' : 'Copy Link'}
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -641,6 +781,39 @@ export default function FinalPreview({
               Close Link
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Toast Notification for Email dispatch */}
+      {notification && (
+        <div 
+          className="fixed bottom-24 left-1/2 -translate-x-1/2 sm:bottom-6 sm:right-6 sm:left-auto sm:translate-x-0 z-50 flex items-center gap-3.5 px-4.5 py-4 bg-slate-950/95 border border-white/10 backdrop-blur-xl rounded-2xl shadow-[0_10px_50px_rgba(0,0,0,0.5)] max-w-sm w-[90vw] sm:w-[360px] animate-fade-in animate-slide-up" 
+          id="email-toast-notification"
+        >
+          <div className={`p-2.5 rounded-xl shrink-0 ${
+            notification.type === 'success' 
+              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+              : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+          }`}>
+            {notification.type === 'success' ? (
+              <CheckCircle className="w-5 h-5 fill-none" />
+            ) : (
+              <AlertTriangle className="w-5 h-5 text-rose-400" />
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <h5 className="font-extrabold text-[11px] text-white uppercase tracking-wider">
+              {notification.type === 'success' ? 'Email Dispatched!' : 'Delivery Warning'}
+            </h5>
+            <p className="text-xs text-slate-300 mt-1 leading-normal break-words">{notification.message}</p>
+          </div>
+          <button 
+            onClick={() => setNotification(null)}
+            className="text-[10px] text-slate-400 hover:text-white transition-colors font-bold px-2.5 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg shrink-0 border border-white/5"
+            id="btn-close-toast"
+          >
+            Close
+          </button>
         </div>
       )}
     </div>

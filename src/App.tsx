@@ -94,7 +94,7 @@ export default function App() {
     printerConnected: false,
     printerModel: 'DNP DS620',
     printerStatus: 'Idle Ready',
-    storageUsage: '1.4 GB',
+    storageUsage: '1.45 GB of 10.0 GB (14.5% used)',
     totalPrints: 15,
     totalEmails: 12,
     devMode: true,

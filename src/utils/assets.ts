@@ -449,6 +449,7 @@ export const DEFAULT_EMAIL_CONFIG: EmailConfig = {
   smtpPass: '',
   messageTemplate: 'Hi there!\n\nAttached is your professional photostrip from our photobooth. Thank you for joining us!\n\nBest regards,\nThe Event Team',
   logoUrl: '',
+  deliveryStrategy: 'smtp',
 };
 
 export const DEFAULT_PRINTER_CONFIG: PrinterConfig = {

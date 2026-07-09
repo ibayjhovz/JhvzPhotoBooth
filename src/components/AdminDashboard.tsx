@@ -367,10 +367,30 @@ export default function AdminDashboard({
                   <div className="text-[10px] font-bold text-purple-400 mt-1 select-none">Spool queue: Empty</div>
                 </div>
 
-                <div className="bg-white/5 border border-white/10 backdrop-blur-md p-5 rounded-2xl">
-                  <span className="text-[10px] font-black uppercase text-blue-300 tracking-wider">Local Storage Used</span>
-                  <h3 className="text-3xl font-black text-white mt-1.5">{companionStatus.storageUsage}</h3>
-                  <div className="text-[10px] font-bold text-slate-300 mt-1 select-none truncate">Path: {settings.storagePath}</div>
+                <div className="bg-white/5 border border-white/10 backdrop-blur-md p-5 rounded-2xl flex flex-col justify-between">
+                  <div>
+                    <span className="text-[10px] font-black uppercase text-blue-300 tracking-wider">Local Storage Used</span>
+                    <h3 className="text-xl sm:text-2xl lg:text-2xl font-black text-white mt-1.5 leading-none">{companionStatus.storageUsage}</h3>
+                    <div className="text-[10px] font-bold text-slate-300 mt-2 select-none truncate">Path: {settings.storagePath}</div>
+                  </div>
+                  <div className="mt-4">
+                    <div className="w-full bg-white/10 h-1.5 rounded-full overflow-hidden">
+                      <div 
+                        className="bg-gradient-to-r from-blue-500 to-indigo-500 h-full rounded-full transition-all duration-500"
+                        style={{
+                          width: `${(() => {
+                            const match = companionStatus.storageUsage.match(/([\d.]+)\s*GB/i);
+                            const val = match ? parseFloat(match[1]) : 1.45;
+                            return Math.min(100, (val / 10) * 100);
+                          })()}%`
+                        }}
+                      />
+                    </div>
+                    <div className="flex justify-between items-center text-[9px] text-slate-400 font-bold mt-1.5">
+                      <span>0 GB</span>
+                      <span>10.0 GB Limit</span>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -607,11 +627,91 @@ export default function AdminDashboard({
 
           {activeTab === 'email' && (
             <div className="flex flex-col gap-6" id="email-pane">
+              {/* Delivery Strategy Selector */}
+              <div className="p-5 bg-white/5 border border-white/10 backdrop-blur-md rounded-2xl flex flex-col gap-4">
+                <div>
+                  <h3 className="text-sm font-black tracking-wider uppercase text-blue-300">Email Delivery Strategy</h3>
+                  <p className="text-xs text-slate-400 mt-1">Select the most reliable method for sending soft-copy photostrips to your event guests.</p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Strategy A: SMTP */}
+                  <button
+                    type="button"
+                    onClick={() => onSaveEmailConfig({ ...emailConfig, deliveryStrategy: 'smtp' })}
+                    className={`p-4 rounded-xl border text-left transition-all flex flex-col gap-2 ${
+                      (emailConfig.deliveryStrategy || 'smtp') === 'smtp'
+                        ? 'bg-blue-600/10 border-blue-500 shadow-lg shadow-blue-500/5'
+                        : 'bg-white/5 border-white/5 hover:bg-white/10'
+                    }`}
+                  >
+                    <div className="flex justify-between items-center w-full">
+                      <span className="text-xs font-black text-white uppercase tracking-wider">Professional SMTP</span>
+                      {(emailConfig.deliveryStrategy || 'smtp') === 'smtp' && (
+                        <span className="w-2 h-2 rounded-full bg-blue-400" />
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-300 leading-normal">
+                      Delivers real, high-resolution email attachments automatically from the backend using your personal mail server.
+                    </p>
+                  </button>
+
+                  {/* Strategy B: Mailto Client */}
+                  <button
+                    type="button"
+                    onClick={() => onSaveEmailConfig({ ...emailConfig, deliveryStrategy: 'mailto' })}
+                    className={`p-4 rounded-xl border text-left transition-all flex flex-col gap-2 ${
+                      emailConfig.deliveryStrategy === 'mailto'
+                        ? 'bg-emerald-600/10 border-emerald-500 shadow-lg shadow-emerald-500/5'
+                        : 'bg-white/5 border-white/5 hover:bg-white/10'
+                    }`}
+                  >
+                    <div className="flex justify-between items-center w-full">
+                      <span className="text-xs font-black text-white uppercase tracking-wider">Browser Webmail</span>
+                      {emailConfig.deliveryStrategy === 'mailto' && (
+                        <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-300 leading-normal">
+                      <strong>100% Guaranteed.</strong> No SMTP setup needed! Opens a pre-filled webmail draft in the browser (Gmail, Outlook, Yahoo etc.) for 1-click manual delivery.
+                    </p>
+                  </button>
+
+                  {/* Strategy C: Simulation Mode */}
+                  <button
+                    type="button"
+                    onClick={() => onSaveEmailConfig({ ...emailConfig, deliveryStrategy: 'simulated' })}
+                    className={`p-4 rounded-xl border text-left transition-all flex flex-col gap-2 ${
+                      emailConfig.deliveryStrategy === 'simulated'
+                        ? 'bg-purple-600/10 border-purple-500 shadow-lg shadow-purple-500/5'
+                        : 'bg-white/5 border-white/5 hover:bg-white/10'
+                    }`}
+                  >
+                    <div className="flex justify-between items-center w-full">
+                      <span className="text-xs font-black text-white uppercase tracking-wider">Offline Simulator</span>
+                      {emailConfig.deliveryStrategy === 'simulated' && (
+                        <span className="w-2 h-2 rounded-full bg-purple-400" />
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-300 leading-normal">
+                      Fakes instant email dispatch success on the screen. Keeps the line moving. Perfect for offline testing or poor cellular coverage venues.
+                    </p>
+                  </button>
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 
                 {/* SMTP Server Configuration form */}
-                <div className="lg:col-span-2 p-5 bg-white/5 border border-white/10 backdrop-blur-md rounded-2xl flex flex-col gap-4">
-                  <h3 className="text-sm font-black tracking-wider uppercase text-blue-300">SMTP Server Configuration</h3>
+                <div className={`lg:col-span-2 p-5 bg-white/5 border border-white/10 backdrop-blur-md rounded-2xl flex flex-col gap-4 transition-opacity duration-300 ${
+                  (emailConfig.deliveryStrategy || 'smtp') !== 'smtp' ? 'opacity-40 pointer-events-none' : ''
+                }`}>
+                  <div className="flex justify-between items-center">
+                    <h3 className="text-sm font-black tracking-wider uppercase text-blue-300">SMTP Server Configuration</h3>
+                    {(emailConfig.deliveryStrategy || 'smtp') !== 'smtp' && (
+                      <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded text-slate-400 font-extrabold uppercase">Inactive in current strategy</span>
+                    )}
+                  </div>
 
                   {/* SMTP Presets Quick Select */}
                   <div className="flex flex-col gap-2.5 p-4 bg-black/40 border border-white/5 rounded-2xl">

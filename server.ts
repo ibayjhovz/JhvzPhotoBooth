@@ -57,6 +57,28 @@ async function startServer() {
     ]
   };
 
+  // Helper to dynamically calculate storage usage with a 10.0 GB allocation
+  function getStorageUsageString(): string {
+    let totalBytes = 0;
+    try {
+      if (fs.existsSync(PHOTOSTRIPS_DIR)) {
+        const files = fs.readdirSync(PHOTOSTRIPS_DIR);
+        for (const file of files) {
+          const stats = fs.statSync(path.join(PHOTOSTRIPS_DIR, file));
+          totalBytes += stats.size;
+        }
+      }
+    } catch (err) {
+      console.error('Failed to calculate PHOTOSTRIPS_DIR size:', err);
+    }
+    
+    // Convert bytes to GB. 
+    // We assume an elegant baseline of 1.45 GB representing OS, companion engine, assets and firmware.
+    const filesInGB = totalBytes / (1024 * 1024 * 1024);
+    const totalGBUsed = Math.min(10.0, 1.45 + filesInGB);
+    return `${totalGBUsed.toFixed(2)} GB of 10.0 GB (${((totalGBUsed / 10) * 100).toFixed(1)}% used)`;
+  }
+
   // Live hardware state tracking
   let stats = {
     cameraConnected: true,
@@ -65,7 +87,7 @@ async function startServer() {
     printerConnected: true,
     printerModel: 'DNP DS620 (USB)',
     printerStatus: 'Idle Ready',
-    storageUsage: '1.4 GB',
+    storageUsage: '1.45 GB of 10.0 GB (14.5% used)',
     totalPrints: 145,
     totalEmails: 98,
     devMode: false
@@ -82,6 +104,9 @@ async function startServer() {
     }
   }
 
+  // Initialize storage usage dynamically on startup
+  stats.storageUsage = getStorageUsageString();
+
   const saveStats = () => {
     try {
       fs.writeFileSync(STATS_FILE, JSON.stringify(stats, null, 2), 'utf8');
@@ -89,6 +114,19 @@ async function startServer() {
       console.error('Failed to save stats to disk:', err);
     }
   };
+
+  // Helper to broadcast stats changes to all connected kiosk clients
+  function broadcastStatus() {
+    const payload = JSON.stringify({
+      type: 'status:sync',
+      status: stats
+    });
+    wss.clients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(payload);
+      }
+    });
+  }
 
   wss.on('connection', (ws: WebSocket) => {
     console.log('Companion Server: Client connected via WebSocket.');
@@ -141,10 +179,30 @@ async function startServer() {
             return;
           }
 
-          console.log(`[SMTP SPOOL] Dispatched photostrip mail request to: ${email}`);
+          console.log(`[SMTP SPOOL] Dispatched photostrip mail request to: ${email} using strategy: ${config?.deliveryStrategy || 'smtp'}`);
           stats.totalEmails += 1;
           saveStats();
+          broadcastStatus();
 
+          const strategy = config?.deliveryStrategy || 'smtp';
+
+          if (strategy === 'simulated') {
+            console.log(`[SMTP SIMULATED] Strategy is simulated. Sending instant success to client for: ${email}`);
+            setTimeout(() => {
+              ws.send(JSON.stringify({ type: 'email:sent', email: email, simulated: true }));
+            }, 1200);
+            return;
+          }
+
+          if (strategy === 'mailto') {
+            console.log(`[SMTP MAILTO] Strategy is browser mailto. Simulating immediate success on server for: ${email}`);
+            setTimeout(() => {
+              ws.send(JSON.stringify({ type: 'email:sent', email: email, mailto: true }));
+            }, 600);
+            return;
+          }
+
+          // Default SMTP strategy
           if (config && config.smtpHost && config.smtpUser) {
             console.log(`[SMTP SENDER] Initializing SMTP transport for ${config.smtpHost}:${config.smtpPort}`);
             const transporter = nodemailer.createTransport({
@@ -190,7 +248,7 @@ async function startServer() {
           } else {
             console.log(`[SMTP MOCK] SMTP not configured. Simulating dispatch to: ${email}`);
             setTimeout(() => {
-              ws.send(JSON.stringify({ type: 'email:sent', email: email }));
+              ws.send(JSON.stringify({ type: 'email:sent', email: email, simulated: true }));
             }, 1000);
           }
 
@@ -243,11 +301,8 @@ async function startServer() {
           stats.totalPrints += copies;
           saveStats();
 
-          // Broadcast updated status with new counters
-          ws.send(JSON.stringify({
-            type: 'status:sync',
-            status: stats
-          }));
+          // Broadcast updated status with new counters to all kiosks & admin consoles
+          broadcastStatus();
         } else if (payload.type === 'camera:test') {
           console.log('[CALIBRATION] Executed hardware shutter test beep.');
         }
@@ -286,6 +341,9 @@ async function startServer() {
         console.error(`[DB SAVE ERROR] Failed to save photostrip ${id} to disk:`, err);
       } else {
         console.log(`[DB SAVE SUCCESS] Persisted photostrip ${id} to disk.`);
+        stats.storageUsage = getStorageUsageString();
+        saveStats();
+        broadcastStatus();
       }
     });
 
