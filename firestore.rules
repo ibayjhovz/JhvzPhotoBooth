@@ -2,54 +2,19 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Global Safety Net
-    match /{document=**} {
-      allow read, write: if false;
-    }
-
-    // Reusable, hardened global helpers
-    function isValidId(id) { 
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
-    }
-    function incoming() { 
-      return request.resource.data; 
-    }
-    function existing() { 
-      return resource.data; 
-    }
-    function isSignedIn() { 
-      return request.auth != null; 
-    }
-
     // Sessions Collection
     match /sessions/{sessionId} {
-      allow get: if isValidId(sessionId);
-      allow list: if true;
-      allow create: if isValidId(sessionId)
-                    && incoming().keys().hasAll(['id', 'date', 'frameId', 'photostripUrl'])
-                    && incoming().id == sessionId
-                    && incoming().date is string
-                    && incoming().frameId is string
-                    && incoming().photostripUrl is string;
-      allow update, delete: if true; // Allows any kiosk or companion device to manage sessions
+      allow read, write: if true;
     }
 
     // Events Collection
     match /events/{eventId} {
-      allow get: if isValidId(eventId);
-      allow list: if true;
-      allow create, update, delete: if isValidId(eventId)
-                    && incoming().keys().hasAll(['id', 'name', 'frameId', 'themeColor'])
-                    && incoming().id == eventId;
+      allow read, write: if true;
     }
 
     // Frames Collection
     match /frames/{frameId} {
-      allow get: if isValidId(frameId);
-      allow list: if true;
-      allow create, update, delete: if isValidId(frameId)
-                    && incoming().keys().hasAll(['id', 'name', 'category', 'slots', 'active'])
-                    && incoming().id == frameId;
+      allow read, write: if true;
     }
   }
 }

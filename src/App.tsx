@@ -165,7 +165,32 @@ export default function App() {
       });
 
       if (dbFrames.length > 0) {
-        setFrames(dbFrames);
+        const hydratedDbFrames = dbFrames.map((frame) => {
+          if (!frame.imageUrl || !frame.imageUrl.startsWith('data:image')) {
+            let style: 'wedding' | 'birthday' | 'graduation' | 'corporate' | 'neon' | 'film' | 'retro' | 'vintage' = 'wedding';
+            let orientation: 'portrait' | 'landscape' | 'square' = 'portrait';
+
+            if (frame.id.includes('wedding')) style = 'wedding';
+            else if (frame.id.includes('birthday')) style = 'birthday';
+            else if (frame.id.includes('graduation')) style = 'graduation';
+            else if (frame.id.includes('corporate')) style = 'corporate';
+            else if (frame.id.includes('neon')) style = 'neon';
+            else if (frame.id.includes('film')) style = 'film';
+            else if (frame.id.includes('retro') || frame.id.includes('polaroid')) style = 'retro';
+            else if (frame.id.includes('vintage')) style = 'vintage';
+
+            if (frame.id.includes('portrait')) orientation = 'portrait';
+            else if (frame.id.includes('landscape')) orientation = 'landscape';
+            else if (frame.id.includes('square')) orientation = 'square';
+
+            return {
+              ...frame,
+              imageUrl: generateMockFrameOverlay(style, orientation, frame.slots),
+            };
+          }
+          return frame;
+        });
+        setFrames(hydratedDbFrames);
 
         // Auto-seed any newly added DEFAULT_FRAMES that do not exist in the database yet
         const missingFrames = DEFAULT_FRAMES.filter((df) => !dbFrames.some((dbf) => dbf.id === df.id));
