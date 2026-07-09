@@ -133,7 +133,7 @@ export default function AdminDashboard({
 
   // SMTP test email trigger state
   const [testEmailAddress, setTestEmailAddress] = useState('');
-  const [testEmailStatus, setTestEmailStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
+  const [testEmailStatus, setTestEmailStatus] = useState<'idle' | 'sending' | 'success' | 'error' | 'simulated'>('idle');
 
   // Simulated Analytics metrics
   const totalSessionsCount = sessions.length;
@@ -187,6 +187,8 @@ export default function AdminDashboard({
         if (data.type === 'email:test_result') {
           if (data.status === 'success') {
             setTestEmailStatus('success');
+          } else if (data.status === 'simulated') {
+            setTestEmailStatus('simulated');
           } else {
             setTestEmailStatus('error');
             console.error('[SMTP TEST ERROR]', data.error);
@@ -208,6 +210,8 @@ export default function AdminDashboard({
     if (!testEmailAddress.trim()) return;
     setTestEmailStatus('sending');
 
+    const hasSmtpConfig = emailConfig && emailConfig.smtpHost && emailConfig.smtpUser;
+
     if (wsSocket && wsSocket.readyState === WebSocket.OPEN) {
       wsSocket.send(JSON.stringify({
         type: 'email:test',
@@ -216,7 +220,11 @@ export default function AdminDashboard({
       }));
     } else {
       setTimeout(() => {
-        setTestEmailStatus('success');
+        if (hasSmtpConfig) {
+          setTestEmailStatus('success');
+        } else {
+          setTestEmailStatus('simulated');
+        }
       }, 1500);
     }
   };
@@ -958,7 +966,13 @@ export default function AdminDashboard({
 
                     {testEmailStatus === 'success' && (
                       <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold rounded-xl text-center mt-4">
-                        Test email dispatched successfully! ✅
+                        Real SMTP test email dispatched successfully! ✅ Please check your inbox (including Spam/Junk folder).
+                      </div>
+                    )}
+
+                    {testEmailStatus === 'simulated' && (
+                      <div className="p-3.5 bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-semibold rounded-xl text-left leading-normal mt-4">
+                        ⚠️ <strong>Simulation Mode Warning:</strong> SMTP Server is not configured. The system simulated a successful dispatch, but <strong>no actual email was sent</strong>. Enter a valid SMTP server above to test real deliveries.
                       </div>
                     )}
                   </div>

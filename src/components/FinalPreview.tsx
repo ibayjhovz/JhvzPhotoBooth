@@ -62,18 +62,26 @@ export default function FinalPreview({
   const [customEmail, setCustomEmail] = useState<string>('');
   const [showEmailInput, setShowEmailInput] = useState<boolean>(false);
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [isLastEmailSimulated, setIsLastEmailSimulated] = useState<boolean>(false);
 
   // Monitor emailStatus to trigger beautiful notification alerts
   useEffect(() => {
     if (emailStatus === 'sent') {
       const target = customEmail || guestEmail || 'the client';
-      setNotification({
-        message: `Your photostrip has been successfully sent to ${target}!`,
-        type: 'success'
-      });
+      if (isLastEmailSimulated) {
+        setNotification({
+          message: `Simulation Mode Warning: SMTP not configured. No real email was sent to ${target}. To send real photostrips, please configure your custom SMTP server details in the Admin Dashboard or use the Webmail Draft fallback!`,
+          type: 'error'
+        });
+      } else {
+        setNotification({
+          message: `Your photostrip was successfully sent to ${target}! If it does not arrive in a minute, please check your Spam/Junk folder or verify your SMTP settings.`,
+          type: 'success'
+        });
+      }
       const timer = setTimeout(() => {
         setNotification(null);
-      }, 5000);
+      }, 8000);
       return () => clearTimeout(timer);
     } else if (emailStatus === 'error') {
       setNotification({
@@ -85,7 +93,7 @@ export default function FinalPreview({
       }, 7000);
       return () => clearTimeout(timer);
     }
-  }, [emailStatus, guestEmail, customEmail]);
+  }, [emailStatus, guestEmail, customEmail, isLastEmailSimulated]);
 
   // Sync real-time WebSocket response for custom SMTP sending
   useEffect(() => {
@@ -96,6 +104,7 @@ export default function FinalPreview({
         const data = JSON.parse(event.data);
         const isTargetEmail = data.email === guestEmail || (customEmail && data.email === customEmail);
         if (data.type === 'email:sent' && isTargetEmail) {
+          setIsLastEmailSimulated(!!data.simulated);
           setEmailStatus('sent');
         } else if (data.type === 'email:failed' && isTargetEmail) {
           setEmailStatus('error');
@@ -298,6 +307,7 @@ export default function FinalPreview({
     } else {
       // Since we are running full-stack in AI Studio, if websocket is offline, we fallback to simulated success
       setTimeout(() => {
+        setIsLastEmailSimulated(true);
         setEmailStatus('sent');
       }, 1800);
     }
@@ -325,6 +335,7 @@ export default function FinalPreview({
     } else {
       // Since we are running full-stack in AI Studio, if websocket is offline, we fallback to simulated success
       setTimeout(() => {
+        setIsLastEmailSimulated(true);
         setEmailStatus('sent');
       }, 1800);
     }

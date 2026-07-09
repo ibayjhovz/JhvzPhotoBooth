@@ -288,9 +288,9 @@ async function startServer() {
               }
             });
           } else {
-            console.warn('[SMTP TEST WARNING] SMTP configuration incomplete. Mocking success.');
+            console.warn('[SMTP TEST WARNING] SMTP configuration incomplete. Mocking simulation.');
             setTimeout(() => {
-              ws.send(JSON.stringify({ type: 'email:test_result', status: 'success' }));
+              ws.send(JSON.stringify({ type: 'email:test_result', status: 'simulated' }));
             }, 1000);
           }
 
