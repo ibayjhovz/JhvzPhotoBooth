@@ -31,6 +31,16 @@ export default function CaptureWorkflow({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
+  // DSLR Webcam selection states
+  const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>(() => {
+    return localStorage.getItem('photobooth_selected_camera') || '';
+  });
+  const [mirrorPreview, setMirrorPreview] = useState<boolean>(() => {
+    const saved = localStorage.getItem('photobooth_mirror_preview');
+    return saved === null ? true : saved === 'true';
+  });
+
   // Sound Synth Synthesizer using Web Audio API
   const playBeep = (freq: number, duration: number) => {
     try {
@@ -102,8 +112,32 @@ export default function CaptureWorkflow({
     }
   };
 
+  // Enumerate active video devices (DSLRs, external capture cards, webcams)
+  useEffect(() => {
+    const getDevices = async () => {
+      try {
+        // Prompt for permissions so that actual device labels are retrieved
+        await navigator.mediaDevices.getUserMedia({ video: true }).catch(() => {});
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevs = devices.filter((device) => device.kind === 'videoinput');
+        setVideoDevices(videoDevs);
+        
+        const stored = localStorage.getItem('photobooth_selected_camera');
+        if (stored && videoDevs.some(d => d.deviceId === stored)) {
+          setSelectedDeviceId(stored);
+        } else if (videoDevs.length > 0) {
+          setSelectedDeviceId(videoDevs[0].deviceId);
+        }
+      } catch (err) {
+        console.warn('Error enumerating video devices:', err);
+      }
+    };
+    getDevices();
+  }, []);
+
   // Start persistent, flicker-free webcam stream for real-time live preview mapping
   useEffect(() => {
+    let active = true;
     const initWebcam = async () => {
       try {
         if (streamRef.current) {
@@ -113,14 +147,37 @@ export default function CaptureWorkflow({
           return;
         }
 
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
+        let stream;
+        try {
+          const videoConstraints: MediaTrackConstraints = {
             width: { ideal: 1280 },
             height: { ideal: 720 },
-            facingMode: 'user',
-          },
-          audio: false,
-        });
+          };
+          if (selectedDeviceId) {
+            videoConstraints.deviceId = { exact: selectedDeviceId };
+          } else {
+            videoConstraints.facingMode = 'user';
+          }
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: videoConstraints,
+            audio: false,
+          });
+        } catch (deviceErr) {
+          console.warn('Could not launch selected device, falling back to default:', deviceErr);
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+              facingMode: 'user',
+            },
+            audio: false,
+          });
+        }
+
+        if (!active) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
 
         streamRef.current = stream;
         if (videoRef.current) {
@@ -141,13 +198,14 @@ export default function CaptureWorkflow({
     }, 150);
 
     return () => {
+      active = false;
       clearTimeout(timer);
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
       }
     };
-  }, []);
+  }, [selectedDeviceId]);
 
   // Handle countdown intervals
   useEffect(() => {
@@ -237,11 +295,15 @@ export default function CaptureWorkflow({
         canvas.width = video.videoWidth || 1280;
         canvas.height = video.videoHeight || 720;
 
-        // Draw video frame (mirrored for intuitive kiosk feeling)
-        ctx.translate(canvas.width, 0);
-        ctx.scale(-1, 1);
+        // Draw video frame (mirrored for intuitive kiosk feeling if mirrorPreview is enabled)
+        if (mirrorPreview) {
+          ctx.translate(canvas.width, 0);
+          ctx.scale(-1, 1);
+        }
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        ctx.setTransform(1, 0, 0, 1, 0, 0); // reset transform
+        if (mirrorPreview) {
+          ctx.setTransform(1, 0, 0, 1, 0, 0); // reset transform
+        }
 
         const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
         onPhotoAcquired(dataUrl);
@@ -336,6 +398,48 @@ export default function CaptureWorkflow({
         </div>
       </div>
 
+      {/* Camera Selection Toolbar (Supports DSLR as Webcams, USB Capture, Virtual Cameras) */}
+      {videoDevices.length > 0 && (
+        <div className="w-full max-w-5xl mx-auto flex flex-col sm:flex-row gap-3 items-center justify-between px-5 py-3 bg-slate-900/40 border border-white/5 rounded-2xl backdrop-blur-md z-10 mb-2">
+          <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-start">
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">
+              Active Webcam Lens:
+            </span>
+            <select
+              value={selectedDeviceId}
+              onChange={(e) => {
+                const id = e.target.value;
+                setSelectedDeviceId(id);
+                localStorage.setItem('photobooth_selected_camera', id);
+              }}
+              className="bg-slate-950/80 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white font-bold focus:outline-none focus:border-blue-500/50 transition-all cursor-pointer"
+            >
+              {videoDevices.map((device) => (
+                <option key={device.deviceId} value={device.deviceId}>
+                  {device.label || `Camera ${device.deviceId.substring(0, 5)}...`}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-2 text-xs text-slate-400 font-bold select-none cursor-pointer">
+              <input
+                type="checkbox"
+                checked={mirrorPreview}
+                onChange={(e) => {
+                  const val = e.target.checked;
+                  setMirrorPreview(val);
+                  localStorage.setItem('photobooth_mirror_preview', String(val));
+                }}
+                className="rounded border-white/20 bg-slate-950 text-blue-600 focus:ring-0 focus:ring-offset-0"
+              />
+              Mirror Preview (Recommended for Webcams)
+            </label>
+          </div>
+        </div>
+      )}
+
       {/* Split-Screen Main Workspace: Large Viewfinder (Left) + Real-Time Photostrip Preview (Right) */}
       <div className="w-full max-w-6xl mx-auto flex-1 flex flex-col lg:flex-row gap-8 items-center justify-center z-10 py-2">
         
@@ -358,7 +462,7 @@ export default function CaptureWorkflow({
                   }}
                   autoPlay
                   playsInline
-                  className="w-full h-full object-cover scale-x-[-1]"
+                  className={`w-full h-full object-cover ${mirrorPreview ? 'scale-x-[-1]' : ''}`}
                 />
                 
                 {/* Rule of thirds grid overlay for alignment */}
@@ -483,7 +587,7 @@ export default function CaptureWorkflow({
                           }}
                           autoPlay
                           playsInline
-                          className="w-full h-full object-cover scale-x-[-1]"
+                          className={`w-full h-full object-cover ${mirrorPreview ? 'scale-x-[-1]' : ''}`}
                         />
                         {/* Active Slot HUD Highlight */}
                         <div className="absolute inset-0 border-2 border-blue-500 animate-pulse pointer-events-none z-10"></div>
