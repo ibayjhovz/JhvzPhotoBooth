@@ -5,6 +5,10 @@ import http from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createServer as createViteServer } from 'vite';
 import nodemailer from 'nodemailer';
+import dotenv from 'dotenv';
+
+// Load environment variables
+dotenv.config();
 
 // Helper to determine active SMTP configuration with environment variable fallbacks
 function getEffectiveSmtpConfig(config: any) {
