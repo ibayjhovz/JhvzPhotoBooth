@@ -298,37 +298,35 @@ export default function App() {
         console.warn('[FIRESTORE-SYNC] Error loading local sessions for sync:', err);
       }
 
-      // If Firestore database is empty but we have local sessions, preserve them
-      if (dbSessions.length === 0 && localSessions.length > 0) {
-        console.log('[FIRESTORE-SYNC] DB is empty, preserving local sessions:', localSessions.length);
-        setSessions(localSessions);
-        
-        // Sync them to Firestore
-        localSessions.forEach((local) => {
-          setDoc(doc(db, 'sessions', local.id), local).catch((err) => {
-            console.error('[FIRESTORE-SYNC] Error backing up local session:', err);
-          });
-        });
-        return;
-      }
+      // We only ever sync sessions that are explicitly marked as local-only (newly captured but not yet on Firestore)
+      const localOnlySessions = localSessions.filter((s) => s.isLocalOnly);
 
-      const merged = [...dbSessions];
+      // Map Firestore sessions and ensure isLocalOnly is removed/false since they are safely on Firestore
+      const cleanedDbSessions = dbSessions.map((dbS) => {
+        if (dbS.isLocalOnly) {
+          const { isLocalOnly, ...rest } = dbS;
+          return rest as Session;
+        }
+        return dbS;
+      });
+
+      const merged = [...cleanedDbSessions];
       let hasLocalSyncs = false;
 
       // Sync local-only sessions to Firestore
-      localSessions.forEach((local) => {
+      localOnlySessions.forEach((local) => {
         if (!merged.some((dbS) => dbS.id === local.id)) {
           merged.push(local);
           hasLocalSyncs = true;
-          setDoc(doc(db, 'sessions', local.id), local).catch((err) => {
+          // Upload to Firestore, stripping the isLocalOnly flag for the database
+          const { isLocalOnly, ...toUpload } = local;
+          setDoc(doc(db, 'sessions', local.id), toUpload).catch((err) => {
             console.error('[FIRESTORE-SYNC] Background sync error for session:', local.id, err);
           });
         }
       });
 
-      if (hasLocalSyncs) {
-        merged.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      }
+      merged.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       setSessions(merged);
     }, (error) => {
       console.error('[FIRESTORE] Sessions subscription error:', error);
@@ -555,8 +553,9 @@ export default function App() {
   }, [view]);
 
   const handleSaveSessionRecord = async (session: Session) => {
-    // Save locally first to be responsive
-    setSessions((prev) => [session, ...prev]);
+    // Save locally first to be responsive, marked as local-only
+    const localSession = { ...session, isLocalOnly: true };
+    setSessions((prev) => [localSession, ...prev]);
 
     // Update companion totals dynamically
     setCompanionStatus((prev) => ({
@@ -567,7 +566,9 @@ export default function App() {
 
     // Save session to Firestore
     try {
-      await setDoc(doc(db, 'sessions', session.id), session);
+      // Strip isLocalOnly flag when saving to Firestore
+      const { isLocalOnly, ...toUpload } = localSession;
+      await setDoc(doc(db, 'sessions', session.id), toUpload);
     } catch (err) {
       console.error('[FIRESTORE] Error saving session:', err);
     }

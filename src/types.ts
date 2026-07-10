@@ -45,6 +45,7 @@ export interface Session {
   duration: number; // in seconds
   driveFileId?: string;
   driveViewLink?: string;
+  isLocalOnly?: boolean;
 }
 
 export interface CompanionStatus {
