@@ -12,6 +12,7 @@ export default function GalleryView({ sessions, frames, onDeleteSession }: Galle
   const [search, setSearch] = useState('');
   const [dateFilter, setDateFilter] = useState('');
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
+  const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
 
   const getFrameName = (frameId: string) => {
     return frames.find((f) => f.id === frameId)?.name || 'Custom Layout';
@@ -43,6 +44,41 @@ export default function GalleryView({ sessions, frames, onDeleteSession }: Galle
 
   return (
     <div className="flex flex-col gap-6" id="gallery-manager-panel">
+      {/* Delete Confirmation Modal */}
+      {sessionToDelete && (
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 z-[60] animate-fade-in">
+          <div className="bg-slate-900 border border-rose-500/20 rounded-3xl p-6 w-full max-w-md shadow-2xl flex flex-col items-center text-center animate-scale-in">
+            <div className="w-12 h-12 rounded-full bg-rose-500/10 border border-rose-500/20 flex items-center justify-center mb-4">
+              <Trash2 className="w-6 h-6 text-rose-500" />
+            </div>
+            <h3 className="text-lg font-black text-white font-display tracking-tight mb-2">
+              Permanently Delete Session?
+            </h3>
+            <p className="text-sm text-slate-400 mb-6 leading-relaxed">
+              This will permanently remove this photobooth session and its generated photostrip from the public gallery and Firestore database. This action <span className="text-rose-400 font-bold">cannot be undone</span>.
+            </p>
+            <div className="flex gap-3 w-full">
+              <button
+                onClick={() => setSessionToDelete(null)}
+                className="flex-1 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-bold text-slate-300 transition-all cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  onDeleteSession(sessionToDelete);
+                  setSessionToDelete(null);
+                  setSelectedSession(null);
+                }}
+                className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-500 border border-rose-600 text-white font-black uppercase tracking-wider rounded-xl text-xs transition-all shadow-lg shadow-rose-600/20 cursor-pointer"
+              >
+                Delete Permanently
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Session Detail Modal */}
       {selectedSession && (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in">
@@ -136,12 +172,11 @@ export default function GalleryView({ sessions, frames, onDeleteSession }: Galle
               <div className="flex gap-2.5 mt-8">
                 <button
                   onClick={() => {
-                    onDeleteSession(selectedSession.id);
-                    setSelectedSession(null);
+                    setSessionToDelete(selectedSession.id);
                   }}
                   className="px-4 py-2.5 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-rose-400 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all"
                 >
-                  <Trash2 className="w-4 h-4" /> Delete Session
+                  <Trash2 className="w-4 h-4" /> Delete Permanently
                 </button>
                 <button
                   onClick={() => handleDownloadStrip(selectedSession)}
