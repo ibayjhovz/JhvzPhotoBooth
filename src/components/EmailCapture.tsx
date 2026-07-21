@@ -19,9 +19,22 @@ export default function EmailCapture({
   const [agree, setAgree] = useState(false);
   const [activeField, setActiveField] = useState<'email' | 'name'>('email');
   const [errorMsg, setErrorMsg] = useState('');
+  const [recentEmails, setRecentEmails] = useState<string[]>([]);
 
   const emailRef = useRef<HTMLInputElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
+
+  // Load recent email addresses from cache for easy touch selecting
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('photobooth_recent_emails');
+      if (saved) {
+        setRecentEmails(JSON.parse(saved));
+      }
+    } catch (e) {
+      console.warn('Error loading recent emails:', e);
+    }
+  }, []);
 
   // Auto-focus email field
   useEffect(() => {
@@ -35,6 +48,29 @@ export default function EmailCapture({
   const validateEmail = (input: string) => {
     const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return re.test(input);
+  };
+
+  const handleQuickDomain = (suffix: string) => {
+    const current = email.trim();
+    if (!current) {
+      // If empty, append a placeholder user part so it forms a correct start
+      setEmail('guest' + suffix);
+    } else {
+      const atIndex = current.indexOf('@');
+      if (atIndex === -1) {
+        setEmail(current + suffix);
+      } else {
+        setEmail(current.substring(0, atIndex) + suffix);
+      }
+    }
+    setErrorMsg('');
+    emailRef.current?.focus();
+  };
+
+  const handleSelectRecentEmail = (selected: string) => {
+    setEmail(selected);
+    setErrorMsg('');
+    emailRef.current?.focus();
   };
 
   const handleSubmit = (e?: React.FormEvent) => {
@@ -61,7 +97,20 @@ export default function EmailCapture({
         return;
       }
 
-      onConfirm(email.trim(), name.trim());
+      const emailTrimmed = email.trim();
+      // Cache this email address for high speed group typing helper
+      try {
+        const saved = localStorage.getItem('photobooth_recent_emails');
+        let list: string[] = saved ? JSON.parse(saved) : [];
+        list = list.filter((item) => item.toLowerCase() !== emailTrimmed.toLowerCase());
+        list.unshift(emailTrimmed);
+        const updated = list.slice(0, 5);
+        localStorage.setItem('photobooth_recent_emails', JSON.stringify(updated));
+      } catch (err) {
+        console.warn('Error saving recent email:', err);
+      }
+
+      onConfirm(emailTrimmed, name.trim());
     } else {
       onConfirm('', name.trim());
     }
@@ -158,6 +207,42 @@ export default function EmailCapture({
                   } rounded-xl text-lg text-white font-medium placeholder-white/30 focus:outline-none transition-all`}
                   id="email-input-field"
                 />
+
+                {/* Touch-Friendly Quick Suffix Helpers */}
+                <div className="flex flex-wrap gap-1.5 mt-1">
+                  {['@gmail.com', '@yahoo.com', '@outlook.com', '@icloud.com', '@hotmail.com'].map((domain) => (
+                    <button
+                      key={domain}
+                      type="button"
+                      onClick={() => handleQuickDomain(domain)}
+                      className="px-2.5 py-1 text-[11px] font-extrabold bg-blue-500/10 hover:bg-blue-500/25 border border-blue-500/20 text-blue-300 rounded-lg transition-all active:scale-95"
+                    >
+                      {domain}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Recent Guest Emails Helper for High-Speed Repeating Groups */}
+                {recentEmails.length > 0 && (
+                  <div className="mt-2.5 p-2 bg-slate-900/40 border border-white/5 rounded-xl">
+                    <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block mb-1">
+                      Recent Guests (Tap to autofill):
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {recentEmails.map((recent) => (
+                        <button
+                          key={recent}
+                          type="button"
+                          onClick={() => handleSelectRecentEmail(recent)}
+                          className="px-2.5 py-1 text-[10px] font-semibold bg-white/5 hover:bg-white/10 border border-white/5 text-slate-300 rounded-md transition-all truncate max-w-[180px] active:scale-95"
+                          title={recent}
+                        >
+                          {recent}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

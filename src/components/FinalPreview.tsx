@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Mail, Printer, Download, QrCode, ArrowRight, CheckCircle, RefreshCw, Loader2, Link, AlertTriangle } from 'lucide-react';
+import { Mail, Printer, Download, QrCode, ArrowRight, CheckCircle, RefreshCw, Loader2, Link, AlertTriangle, ExternalLink } from 'lucide-react';
 import { CompanionStatus, EventFrame, PhotoboothEvent, Session, AppSettings, EmailConfig } from '../types';
 import QRCode from 'qrcode';
 import { getOrCreateFolder, uploadPhotostripToDrive } from '../utils/googleDrive';
@@ -63,6 +63,151 @@ export default function FinalPreview({
   const [showEmailInput, setShowEmailInput] = useState<boolean>(false);
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [isLastEmailSimulated, setIsLastEmailSimulated] = useState<boolean>(false);
+
+  // Print connection method: companion (USB Node.js backend) or AirPrint (Browser standard dialog)
+  const [printMethod, setPrintMethod] = useState<'airprint' | 'companion'>(() => {
+    return companionStatus.printerConnected ? 'companion' : 'airprint';
+  });
+
+  // Dynamic QR code update listener for custom override links
+  const [isCustomOverrideLink, setIsCustomOverrideLink] = useState<boolean>(false);
+  const [customOverrideUrl, setCustomOverrideUrl] = useState<string>('');
+
+  useEffect(() => {
+    if (!qrLinkUrl) return;
+    const generateQR = async () => {
+      try {
+        const qrDataUrl = await QRCode.toDataURL(qrLinkUrl, {
+          width: 300,
+          margin: 1,
+          color: { dark: '#0F172A', light: '#FFFFFF' }
+        });
+        setQrUrl(qrDataUrl);
+      } catch (err) {
+        console.error('Dynamic QR Code generation failed:', err);
+      }
+    };
+    generateQR();
+  }, [qrLinkUrl]);
+
+  const [recentEmails, setRecentEmails] = useState<string[]>([]);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('photobooth_recent_emails');
+      if (saved) {
+        setRecentEmails(JSON.parse(saved));
+      }
+    } catch (e) {
+      console.warn('Error loading recent emails in FinalPreview:', e);
+    }
+  }, []);
+
+  const handleQuickDomain = (suffix: string) => {
+    const current = customEmail.trim();
+    if (!current) {
+      setCustomEmail('guest' + suffix);
+    } else {
+      const atIndex = current.indexOf('@');
+      if (atIndex === -1) {
+        setCustomEmail(current + suffix);
+      } else {
+        setCustomEmail(current.substring(0, atIndex) + suffix);
+      }
+    }
+  };
+
+  const handleSelectRecentEmail = (emailStr: string) => {
+    setCustomEmail(emailStr);
+  };
+
+  const handleBrowserPrint = () => {
+    setPrintStatus('spooling');
+    setPrintProgress(10);
+
+    try {
+      // Create an isolated hidden iframe
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'fixed';
+      iframe.style.right = '0';
+      iframe.style.bottom = '0';
+      iframe.style.width = '0';
+      iframe.style.height = '0';
+      iframe.style.border = '0';
+      iframe.style.zIndex = '-9999';
+      document.body.appendChild(iframe);
+
+      const iframeDoc = iframe.contentWindow?.document || iframe.contentDocument;
+      if (!iframeDoc) {
+        throw new Error('Could not access print frame context');
+      }
+
+      iframeDoc.open();
+      iframeDoc.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Print Photostrip</title>
+            <style>
+              @page {
+                size: auto;
+                margin: 0mm;
+              }
+              body {
+                margin: 0;
+                padding: 0;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                background-color: white;
+              }
+              img {
+                max-width: 100%;
+                max-height: 100vh;
+                display: block;
+                page-break-inside: avoid;
+              }
+            </style>
+          </head>
+          <body>
+            <img src="${photostripUrl}" id="print-image" />
+            <script>
+              const img = document.getElementById('print-image');
+              if (img.complete) {
+                setTimeout(() => {
+                  window.focus();
+                  window.print();
+                }, 500);
+              } else {
+                img.onload = function() {
+                  setTimeout(() => {
+                    window.focus();
+                    window.print();
+                  }, 500);
+                };
+              }
+            </script>
+          </body>
+        </html>
+      `);
+      iframeDoc.close();
+
+      setPrintStatus('printing');
+      setPrintProgress(50);
+
+      // Transition spool progress
+      setTimeout(() => {
+        setPrintProgress(100);
+        setPrintStatus('printed');
+        // Clean up the iframe
+        document.body.removeChild(iframe);
+      }, 3500);
+
+    } catch (err) {
+      console.error('System AirPrint failed:', err);
+      setPrintStatus('error');
+    }
+  };
 
   // Monitor emailStatus to trigger beautiful notification alerts
   useEffect(() => {
@@ -342,6 +487,11 @@ export default function FinalPreview({
   };
 
   const handlePrint = () => {
+    if (printMethod === 'airprint') {
+      handleBrowserPrint();
+      return;
+    }
+
     setPrintStatus('spooling');
     setPrintProgress(10);
 
@@ -655,6 +805,40 @@ export default function FinalPreview({
                   )}
                 </div>
 
+                {/* Touch-Friendly Suffix Toolbar inside Spot Input */}
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {['@gmail.com', '@yahoo.com', '@outlook.com', '@icloud.com', '@hotmail.com'].map((domain) => (
+                    <button
+                      key={domain}
+                      type="button"
+                      onClick={() => handleQuickDomain(domain)}
+                      className="px-2 py-0.5 text-[10px] font-black bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/15 text-blue-300 rounded-md transition-all"
+                    >
+                      {domain}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Recent Guests Shortcut list inside Spot Input */}
+                {recentEmails.length > 0 && (
+                  <div className="mt-1 pt-1 border-t border-white/5">
+                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block mb-1">Recent:</span>
+                    <div className="flex flex-wrap gap-1">
+                      {recentEmails.map((recent) => (
+                        <button
+                          key={recent}
+                          type="button"
+                          onClick={() => handleSelectRecentEmail(recent)}
+                          className="px-2 py-0.5 text-[9px] font-medium bg-white/5 hover:bg-white/10 border border-white/5 text-slate-300 rounded truncate max-w-[140px]"
+                          title={recent}
+                        >
+                          {recent}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {emailStatus === 'error' && emailConfig.deliveryStrategy !== 'mailto' && (
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pt-2 border-t border-white/5 w-full">
                     <span className="text-[10px] text-rose-400 font-bold">SMTP delivery failed</span>
@@ -737,14 +921,106 @@ export default function FinalPreview({
               >
                 <Download className="w-4 h-4 text-white" /> Save Photo
               </button>
+
+              {/* Manual Google Drive Link Override Option */}
+              <div className="mt-3.5 border-t border-white/5 pt-3 w-full">
+                {!isCustomOverrideLink ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCustomOverrideLink(true);
+                      setCustomOverrideUrl(qrLinkUrl);
+                    }}
+                    className="flex items-center gap-1.5 text-[10px] font-black text-blue-400 hover:text-blue-300 uppercase tracking-widest bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/15 px-3 py-1.5 rounded-xl transition-all"
+                  >
+                    <ExternalLink className="w-3 h-3" /> Custom Google/Drive Link Option
+                  </button>
+                ) : (
+                  <div className="flex flex-col gap-1.5 animate-fade-in w-full text-left">
+                    <label className="text-[9px] font-black uppercase text-blue-300 tracking-wider">
+                      Paste Google Link / Folder URL (Auto QR Generator):
+                    </label>
+                    <div className="flex gap-2 w-full">
+                      <input
+                        type="url"
+                        value={customOverrideUrl}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setCustomOverrideUrl(val);
+                          if (val.trim()) {
+                            setQrLinkUrl(val.trim());
+                          }
+                        }}
+                        placeholder="https://drive.google.com/..."
+                        className="flex-1 bg-black/40 border border-white/10 rounded-lg px-2.5 py-1.5 text-[11px] text-white placeholder-white/20 focus:outline-none focus:border-blue-500"
+                        id="custom-google-link-input"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsCustomOverrideLink(false);
+                          // We don't overwrite if they want to keep what they set, but they can clear/reset
+                        }}
+                        className="text-[10px] font-bold text-slate-400 hover:text-white px-2 py-1.5 bg-white/5 rounded-lg border border-white/5 transition-all"
+                      >
+                        Hide
+                      </button>
+                    </div>
+                    <p className="text-[8px] text-slate-400 font-semibold leading-normal">
+                      Type or paste any Google Drive, Album, or shared link. The QR code on-screen and pre-filled email links will update instantly!
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
           {/* Print Section Panel */}
           <div className="p-5 bg-white/5 border border-white/10 backdrop-blur-md rounded-2xl shadow-md">
-            <h4 className="text-xs font-bold tracking-wider uppercase text-blue-300 flex items-center gap-1.5 mb-4">
-              <Printer className="w-4 h-4 text-purple-400" /> Print Your Memories
-            </h4>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+              <h4 className="text-xs font-bold tracking-wider uppercase text-blue-300 flex items-center gap-1.5">
+                <Printer className="w-4 h-4 text-purple-400" /> Print Your Memories
+              </h4>
+              
+              {/* Manual Control Selector - Switch between Connection Methods */}
+              <div className="flex bg-black/40 p-1 rounded-xl border border-white/5 self-start sm:self-auto">
+                <button
+                  type="button"
+                  onClick={() => setPrintMethod('airprint')}
+                  className={`px-3 py-1 text-[10px] font-black uppercase rounded-lg transition-all ${
+                    printMethod === 'airprint'
+                      ? 'bg-blue-600/35 text-white border border-blue-500/30'
+                      : 'text-slate-400 hover:text-white border border-transparent'
+                  }`}
+                  id="tab-airprint"
+                >
+                  Wi-Fi / AirPrint
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPrintMethod('companion')}
+                  className={`px-3 py-1 text-[10px] font-black uppercase rounded-lg transition-all flex items-center gap-1 ${
+                    printMethod === 'companion'
+                      ? 'bg-purple-600/35 text-white border border-purple-500/30'
+                      : 'text-slate-400 hover:text-white border border-transparent'
+                  }`}
+                  id="tab-companion"
+                >
+                  Kiosk USB
+                  {companionStatus.printerConnected && (
+                    <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full inline-block animate-ping"></span>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Quick status indicator of the selected connection */}
+            <div className="mb-4 text-[10px] font-semibold text-slate-400 bg-white/5 px-3 py-2 rounded-xl flex items-center justify-between">
+              <span>Selected Pathway:</span>
+              <span className="font-extrabold text-blue-300">
+                {printMethod === 'airprint' ? '🔗 System print dialog (Compatible with all Wi-Fi/AirPrint)' : `🔌 Kiosk Direct (${companionStatus.printerModel || 'Not Connected'})`}
+              </span>
+            </div>
 
             {printStatus === 'idle' || printStatus === 'printed' ? (
               <div className="flex flex-col sm:flex-row gap-4 items-center">
