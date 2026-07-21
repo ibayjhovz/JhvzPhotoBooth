@@ -71,7 +71,7 @@ export interface EmailConfig {
   smtpPass: string;
   messageTemplate: string;
   logoUrl?: string;
-  deliveryStrategy?: 'smtp' | 'mailto' | 'simulated';
+  deliveryStrategy?: 'smtp' | 'mailto' | 'simulated' | 'gmail';
 }
 
 export interface PrinterConfig {

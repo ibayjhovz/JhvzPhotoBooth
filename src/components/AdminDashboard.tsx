@@ -206,9 +206,68 @@ export default function AdminDashboard({
     };
   }, [wsSocket]);
 
-  const handleSendTestEmail = () => {
+  const sendGmailTestEmailDirectly = async (targetEmail: string): Promise<boolean> => {
+    const token = settings.driveConfig?.accessToken;
+    if (!token) return false;
+
+    try {
+      console.log('[GMAIL-CLIENT-TEST] Constructing MIME message...');
+      const subject = 'Test Mail from your Google Photobooth Sender Account 🚀';
+      const body = 'Hello!\n\nThis is a successful test email verifying that your logged-in Google Account is properly configured as the sender for your photobooth kiosk.\n\nEverything is set up and ready!';
+      
+      const b64Subject = btoa(unescape(encodeURIComponent(subject)));
+      
+      const mimeMessage = [
+        `To: ${targetEmail}`,
+        `Subject: =?utf-8?B?${b64Subject}?=`,
+        `MIME-Version: 1.0`,
+        `Content-Type: text/plain; charset="UTF-8"`,
+        `Content-Transfer-Encoding: 7bit`,
+        ``,
+        `${body}`
+      ].join('\r\n');
+
+      const raw = btoa(unescape(encodeURIComponent(mimeMessage)))
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
+
+      const response = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ raw })
+      });
+
+      return response.ok;
+    } catch (err) {
+      console.error('[GMAIL-CLIENT-TEST] Exception:', err);
+      return false;
+    }
+  };
+
+  const handleSendTestEmail = async () => {
     if (!testEmailAddress.trim()) return;
     setTestEmailStatus('sending');
+
+    if (emailConfig.deliveryStrategy === 'gmail') {
+      const token = settings.driveConfig?.accessToken;
+      if (!token) {
+        setTestEmailStatus('error');
+        alert('Gmail API requires a connected Google account. Please log in below.');
+        return;
+      }
+      const ok = await sendGmailTestEmailDirectly(testEmailAddress);
+      if (ok) {
+        setTestEmailStatus('success');
+      } else {
+        setTestEmailStatus('error');
+        alert('Failed to send test email via Gmail API. Your session may have expired. Please try logging in again.');
+      }
+      return;
+    }
 
     const hasSmtpConfig = (emailConfig && emailConfig.smtpHost && emailConfig.smtpUser) || companionStatus.defaultSmtpConfigured;
 
@@ -642,7 +701,7 @@ export default function AdminDashboard({
                   <p className="text-xs text-slate-400 mt-1">Select the most reliable method for sending soft-copy photostrips to your event guests.</p>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   {/* Strategy A: SMTP */}
                   <button
                     type="button"
@@ -661,6 +720,27 @@ export default function AdminDashboard({
                     </div>
                     <p className="text-[11px] text-slate-300 leading-normal">
                       Delivers real, high-resolution email attachments automatically from the backend using your personal mail server.
+                    </p>
+                  </button>
+
+                  {/* Strategy D: Google Mail (Gmail API) */}
+                  <button
+                    type="button"
+                    onClick={() => onSaveEmailConfig({ ...emailConfig, deliveryStrategy: 'gmail' })}
+                    className={`p-4 rounded-xl border text-left transition-all flex flex-col gap-2 ${
+                      emailConfig.deliveryStrategy === 'gmail'
+                        ? 'bg-blue-600/10 border-blue-500 shadow-lg shadow-blue-500/5'
+                        : 'bg-white/5 border-white/5 hover:bg-white/10'
+                    }`}
+                  >
+                    <div className="flex justify-between items-center w-full">
+                      <span className="text-xs font-black text-white uppercase tracking-wider">Google Mail (Gmail API)</span>
+                      {emailConfig.deliveryStrategy === 'gmail' && (
+                        <span className="w-2 h-2 rounded-full bg-blue-400" />
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-300 leading-normal">
+                      <strong>Direct & Secure.</strong> Sign in with Google to securely send emails with attachment files directly on your behalf via Gmail.
                     </p>
                   </button>
 
@@ -710,10 +790,105 @@ export default function AdminDashboard({
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 
-                {/* SMTP Server Configuration form */}
-                <div className={`lg:col-span-2 p-5 bg-white/5 border border-white/10 backdrop-blur-md rounded-2xl flex flex-col gap-4 transition-opacity duration-300 ${
-                  (emailConfig.deliveryStrategy || 'smtp') !== 'smtp' ? 'opacity-40 pointer-events-none' : ''
-                }`}>
+                {/* Conditional Sender Configuration Form */}
+                {emailConfig.deliveryStrategy === 'gmail' ? (
+                  <div className="lg:col-span-2 p-5 bg-white/5 border border-white/10 backdrop-blur-md rounded-2xl flex flex-col gap-4 transition-opacity duration-300">
+                    <div className="flex justify-between items-center">
+                      <h3 className="text-sm font-black tracking-wider uppercase text-blue-300">Google Account Sender Portal</h3>
+                      <span className="text-[10px] bg-blue-500/10 border border-blue-500/20 px-2.5 py-1 rounded text-blue-400 font-extrabold uppercase animate-pulse">Gmail API Active ✅</span>
+                    </div>
+
+                    <p className="text-xs text-slate-300 leading-relaxed">
+                      Connect your Google/Gmail account below to use it as the official sender email. Soft-copy photostrips will be emailed directly from your address. No passwords or SMTP servers required!
+                    </p>
+
+                    {settings.driveConfig?.connectedEmail ? (
+                      <div className="p-4 bg-emerald-500/5 border border-emerald-500/15 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-fade-in">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-emerald-500 to-teal-500 flex items-center justify-center text-white font-black text-sm shadow">
+                            {settings.driveConfig.connectedName?.charAt(0) || settings.driveConfig.connectedEmail.charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <p className="text-xs font-black text-white">{settings.driveConfig.connectedName || 'Connected Admin'}</p>
+                            <p className="text-[10px] text-slate-400 font-mono mt-0.5">{settings.driveConfig.connectedEmail}</p>
+                            <div className="flex items-center gap-1.5 mt-1">
+                              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                              <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400">Authenticated Sender</span>
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleDisconnectDrive}
+                          className="px-4 py-2 bg-rose-600/10 hover:bg-rose-600/20 border border-rose-500/20 text-rose-400 hover:text-rose-300 font-black text-[10px] uppercase tracking-wider rounded-xl transition-all cursor-pointer"
+                        >
+                          Disconnect Account
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="p-6 bg-blue-500/5 border border-blue-500/15 rounded-2xl flex flex-col gap-3.5 items-center text-center animate-fade-in">
+                        <Cloud className="w-10 h-10 text-blue-400 animate-bounce" />
+                        <div>
+                          <p className="text-xs font-black text-white">No Email Account Logged In</p>
+                          <p className="text-[10px] text-slate-400 mt-1 max-w-md mx-auto leading-normal">
+                            Log in with your Google Workspace or personal Gmail account to securely authorize this photobooth to send emails on your behalf.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleConnectDrive}
+                          disabled={isConnectingDrive}
+                          className="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 text-white font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+                        >
+                          {isConnectingDrive ? (
+                            <>
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Connecting...
+                            </>
+                          ) : (
+                            <>Log In My Email Account</>
+                          )}
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-xs text-slate-400 font-bold">Display Sender Name</label>
+                        <input
+                          type="text"
+                          value={emailConfig.senderName}
+                          onChange={(e) => onSaveEmailConfig({ ...emailConfig, senderName: e.target.value })}
+                          placeholder="e.g. Sarah & Michael Wedding"
+                          className="px-3.5 py-2 bg-black/40 border border-white/10 rounded-xl text-sm text-slate-200 focus:outline-none focus:border-blue-500/50"
+                        />
+                      </div>
+
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-xs text-slate-400 font-bold">Sender Email Address</label>
+                        <input
+                          type="text"
+                          disabled
+                          value={settings.driveConfig?.connectedEmail || 'No account logged in'}
+                          className="px-3.5 py-2 bg-white/5 border border-white/5 rounded-xl text-sm text-slate-400 font-medium focus:outline-none cursor-not-allowed"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-1.5 mt-2">
+                      <label className="text-xs text-slate-400 font-bold">Email Message Template Body</label>
+                      <textarea
+                        rows={4}
+                        value={emailConfig.messageTemplate}
+                        onChange={(e) => onSaveEmailConfig({ ...emailConfig, messageTemplate: e.target.value })}
+                        className="px-3.5 py-2 bg-black/40 border border-white/10 rounded-xl text-sm text-slate-200 focus:outline-none resize-none focus:border-blue-500/50"
+                      ></textarea>
+                    </div>
+                  </div>
+                ) : (
+                  /* SMTP Server Configuration form */
+                  <div className={`lg:col-span-2 p-5 bg-white/5 border border-white/10 backdrop-blur-md rounded-2xl flex flex-col gap-4 transition-opacity duration-300 ${
+                    (emailConfig.deliveryStrategy || 'smtp') !== 'smtp' ? 'opacity-40 pointer-events-none' : ''
+                  }`}>
                   <div className="flex justify-between items-center">
                     <h3 className="text-sm font-black tracking-wider uppercase text-blue-300">SMTP Server Configuration</h3>
                     {companionStatus.defaultSmtpConfigured && (
@@ -948,6 +1123,7 @@ export default function AdminDashboard({
                     ></textarea>
                   </div>
                 </div>
+              )}
 
                 {/* Email Test Sender panel */}
                 <div className="p-5 bg-white/5 border border-white/10 backdrop-blur-md rounded-2xl flex flex-col justify-between">
