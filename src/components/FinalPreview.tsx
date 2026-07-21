@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Mail, Printer, Download, QrCode, ArrowRight, CheckCircle, RefreshCw, Loader2, Link, AlertTriangle, ExternalLink, Cloud } from 'lucide-react';
+import { Mail, Printer, Download, QrCode, ArrowRight, CheckCircle, RefreshCw, Loader2, Link, AlertTriangle, ExternalLink, Cloud, Copy } from 'lucide-react';
 import { CompanionStatus, EventFrame, PhotoboothEvent, Session, AppSettings, EmailConfig } from '../types';
 import QRCode from 'qrcode';
 import { getOrCreateFolder, uploadPhotostripToDrive } from '../utils/googleDrive';
@@ -40,6 +40,7 @@ export default function FinalPreview({
   const [printStatus, setPrintStatus] = useState<'idle' | 'spooling' | 'printing' | 'printed' | 'error'>('idle');
   const [printCopies, setPrintCopies] = useState<number>(activeEvent.printCopies || 1);
   const [printProgress, setPrintProgress] = useState<number>(0);
+  const [authDomainError, setAuthDomainError] = useState<string | null>(null);
 
   const [qrUrl, setQrUrl] = useState<string>('');
   const [showQrModal, setShowQrModal] = useState<boolean>(false);
@@ -436,6 +437,7 @@ export default function FinalPreview({
 
   const handleConnectGoogleFromPreview = async () => {
     setIsConnectingGoogle(true);
+    setAuthDomainError(null);
     try {
       const result = await googleSignIn();
       if (result) {
@@ -456,10 +458,15 @@ export default function FinalPreview({
       }
     } catch (err: any) {
       console.error('Failed to connect Google:', err);
-      setNotification({
-        message: `Google connection failed: ${err.message || err}`,
-        type: 'error'
-      });
+      const isAuthDomainErr = err.code === 'auth/unauthorized-domain' || err.message?.includes('unauthorized-domain');
+      if (isAuthDomainErr) {
+        setAuthDomainError(window.location.hostname);
+      } else {
+        setNotification({
+          message: `Google connection failed: ${err.message || err}`,
+          type: 'error'
+        });
+      }
     } finally {
       setIsConnectingGoogle(false);
     }
@@ -1356,6 +1363,76 @@ export default function FinalPreview({
           >
             Close
           </button>
+        </div>
+      )}
+
+      {authDomainError && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-lg w-full flex flex-col gap-4 shadow-2xl relative text-left">
+            <button 
+              onClick={() => setAuthDomainError(null)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors text-base font-bold"
+            >
+              ✕
+            </button>
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-rose-500/10 border border-rose-500/20 rounded-2xl">
+                <AlertTriangle className="w-6 h-6 text-rose-400" />
+              </div>
+              <div>
+                <h3 className="text-sm font-black uppercase tracking-wider text-rose-300">Firebase Authorization Required</h3>
+                <p className="text-[10px] text-slate-400 mt-0.5">Allowlist your domain in the Firebase console</p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-rose-500/5 border border-rose-500/15 rounded-xl text-xs text-slate-300 leading-relaxed">
+              Firebase Authentication blocks Google Sign-In from unauthorized domains. Because you are hosting your app on Vercel, you must manually authorize <strong className="text-rose-300">{authDomainError}</strong>.
+            </div>
+
+            <div className="flex flex-col gap-2.5">
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">How to authorize (30 seconds):</span>
+              <ol className="text-xs text-slate-300 space-y-2.5 list-decimal list-inside pl-1 leading-relaxed">
+                <li>
+                  Open the <a href="https://console.firebase.google.com/" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline inline-flex items-center gap-0.5 font-bold">Firebase Console <ExternalLink className="w-3 h-3" /></a>
+                </li>
+                <li>Select your active Photobooth project.</li>
+                <li>Go to <strong className="text-white">Authentication</strong> (sidebar) &rarr; <strong className="text-white">Settings</strong> tab (top row) &rarr; <strong className="text-white">Authorized domains</strong>.</li>
+                <li>
+                  Click <strong className="text-blue-400 font-bold">Add domain</strong> and enter:
+                  <div className="mt-1.5 flex items-center justify-between gap-2 bg-black/50 border border-white/5 rounded-xl px-3 py-2 text-[11px] font-mono select-all">
+                    <span className="text-emerald-400 truncate grow">{authDomainError}</span>
+                    <button 
+                      onClick={() => {
+                        navigator.clipboard.writeText(authDomainError);
+                        alert("Domain copied to clipboard!");
+                      }}
+                      className="text-[10px] text-slate-300 hover:text-white hover:bg-white/10 transition-colors font-sans font-black uppercase bg-white/5 px-2.5 py-1 rounded-md border border-white/5"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                </li>
+                <li>Click <strong className="text-white font-bold">Add</strong> to complete the setup!</li>
+              </ol>
+            </div>
+
+            <div className="flex gap-2.5 mt-2">
+              <a
+                href="https://console.firebase.google.com/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="grow py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-center text-xs font-black uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-1.5 shadow"
+              >
+                Go To Firebase Console <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+              <button
+                onClick={() => setAuthDomainError(null)}
+                className="px-5 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 text-xs font-bold rounded-xl transition-all"
+              >
+                Close
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
