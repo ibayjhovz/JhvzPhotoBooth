@@ -89,6 +89,8 @@ export interface GoogleDriveConfig {
   connectedEmail?: string;
   connectedName?: string;
   accessToken?: string | null;
+  authMethod?: 'oauth' | 'manual';
+  manualToken?: string;
 }
 
 export interface AppSettings {

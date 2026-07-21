@@ -59,6 +59,13 @@ export default function AdminDashboard({
   const [isConnectingDrive, setIsConnectingDrive] = useState(false);
   const [testDriveStatus, setTestDriveStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [authDomainError, setAuthDomainError] = useState<string | null>(null);
+  const [driveSetupMethod, setDriveSetupMethod] = useState<'oauth' | 'manual'>(() => {
+    return settings.driveConfig?.authMethod || 'oauth';
+  });
+  const [manualDriveToken, setManualDriveToken] = useState(settings.driveConfig?.manualToken || '');
+
+  const isManualDrive = driveSetupMethod === 'manual';
+  const isDriveConnected = isManualDrive ? !!settings.driveConfig?.manualToken : !!settings.driveConfig?.connectedEmail;
 
   // Simple Gmail App Password states
   const [gmailSetupMethod, setGmailSetupMethod] = useState<'app_password' | 'oauth'>('app_password');
@@ -109,12 +116,35 @@ export default function AdminDashboard({
             connectedEmail: '',
             connectedName: '',
             accessToken: null,
+            authMethod: driveSetupMethod,
+            manualToken: '',
           }
         });
+        setManualDriveToken('');
       } catch (err) {
         console.error('Disconnect failed:', err);
       }
     }
+  };
+
+  const handleSaveManualDriveToken = () => {
+    if (!manualDriveToken.trim()) {
+      alert('Please enter your Google Access Token.');
+      return;
+    }
+    onSaveSettings({
+      ...settings,
+      driveConfig: {
+        enabled: true,
+        folderName: settings.driveConfig?.folderName || 'Photobooth Kiosk Photos',
+        connectedEmail: 'developer@token.mode',
+        connectedName: 'Developer Token Mode',
+        accessToken: null,
+        authMethod: 'manual',
+        manualToken: manualDriveToken.trim(),
+      }
+    });
+    alert('Google Drive Access Token saved! Auto-upload can now be enabled.');
   };
 
   const handleConnectGmailAppPassword = () => {
@@ -1524,6 +1554,50 @@ export default function AdminDashboard({
 
           {activeTab === 'drive' && (
             <div className="flex flex-col gap-6 animate-fade-in" id="drive-sync-pane">
+              {/* Setup Mode Tabs */}
+              <div className="flex bg-white/5 border border-white/10 rounded-2xl p-1 max-w-md w-full">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDriveSetupMethod('oauth');
+                    onSaveSettings({
+                      ...settings,
+                      driveConfig: {
+                        ...(settings.driveConfig || { enabled: false, folderName: 'Photobooth Kiosk Photos' }),
+                        authMethod: 'oauth'
+                      }
+                    });
+                  }}
+                  className={`flex-1 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
+                    driveSetupMethod === 'oauth'
+                      ? 'bg-gradient-to-r from-emerald-600 to-blue-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Google Sign-In (OAuth)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDriveSetupMethod('manual');
+                    onSaveSettings({
+                      ...settings,
+                      driveConfig: {
+                        ...(settings.driveConfig || { enabled: false, folderName: 'Photobooth Kiosk Photos' }),
+                        authMethod: 'manual'
+                      }
+                    });
+                  }}
+                  className={`flex-1 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
+                    driveSetupMethod === 'manual'
+                      ? 'bg-gradient-to-r from-emerald-600 to-blue-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Developer Token (EASY Bypass)
+                </button>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 
                 {/* Connection Status Card */}
@@ -1543,57 +1617,106 @@ export default function AdminDashboard({
                       By connecting your Google Drive, every guest photo session will automatically generate a photostrip and save a high-resolution copy securely into your cloud workspace.
                     </p>
 
-                    {settings.driveConfig?.connectedEmail ? (
-                      <div className="flex items-center gap-3 bg-black/30 border border-white/5 rounded-2xl p-4">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white font-black text-sm shadow">
-                          {settings.driveConfig.connectedName?.charAt(0) || settings.driveConfig.connectedEmail.charAt(0).toUpperCase()}
-                        </div>
-                        <div>
-                          <p className="text-xs font-black text-white">{settings.driveConfig.connectedName || 'Connected Admin'}</p>
-                          <p className="text-[10px] text-slate-400 font-mono mt-0.5">{settings.driveConfig.connectedEmail}</p>
-                          <div className="flex items-center gap-1.5 mt-1">
-                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                            <span className="text-[9px] font-black uppercase tracking-wider text-emerald-400">Authenticated & Active</span>
+                    {(() => {
+                      const isManual = driveSetupMethod === 'manual';
+                      const isConnected = isManual ? !!settings.driveConfig?.manualToken : !!settings.driveConfig?.connectedEmail;
+
+                      if (isConnected) {
+                        return (
+                          <div className="flex items-center gap-3 bg-black/30 border border-white/5 rounded-2xl p-4">
+                            <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-emerald-500 to-blue-600 flex items-center justify-center text-white font-black text-sm shadow">
+                              {isManual ? 'D' : (settings.driveConfig?.connectedName?.charAt(0) || settings.driveConfig?.connectedEmail?.charAt(0).toUpperCase())}
+                            </div>
+                            <div>
+                              <p className="text-xs font-black text-white">{isManual ? 'Developer Token Connected' : (settings.driveConfig?.connectedName || 'Connected Admin')}</p>
+                              <p className="text-[10px] text-slate-400 font-mono mt-0.5">{isManual ? 'Manual Access Token Mode (No Firebase Domains Required)' : settings.driveConfig?.connectedEmail}</p>
+                              <div className="flex items-center gap-1.5 mt-1">
+                                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                                <span className="text-[9px] font-black uppercase tracking-wider text-emerald-400">Authenticated & Active</span>
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-3 bg-rose-500/5 border border-rose-500/10 rounded-2xl p-4">
-                        <div className="w-10 h-10 rounded-full bg-rose-500/10 flex items-center justify-center text-rose-400 font-black">
-                          !
-                        </div>
-                        <div>
-                          <p className="text-xs font-black text-rose-300">Not Connected</p>
-                          <p className="text-[10px] text-rose-400 mt-0.5">Please sign in to link your Google Drive workspace.</p>
-                        </div>
-                      </div>
-                    )}
+                        );
+                      } else {
+                        return (
+                          <div className="flex items-center gap-3 bg-rose-500/5 border border-rose-500/10 rounded-2xl p-4">
+                            <div className="w-10 h-10 rounded-full bg-rose-500/10 flex items-center justify-center text-rose-400 font-black">
+                              !
+                            </div>
+                            <div>
+                              <p className="text-xs font-black text-rose-300">Not Connected</p>
+                              <p className="text-[10px] text-rose-400 mt-0.5">
+                                {isManual 
+                                  ? 'Please paste your Google Access Token below to bypass OAuth domain restrictions.' 
+                                  : 'Please sign in to link your Google Drive workspace.'}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      }
+                    })()}
                   </div>
 
-                  <div className="mt-6 pt-4 border-t border-white/10 flex items-center gap-3">
-                    {settings.driveConfig?.connectedEmail ? (
-                      <button
-                        onClick={handleDisconnectDrive}
-                        className="px-4 py-2 bg-rose-600/10 hover:bg-rose-600/20 border border-rose-500/20 text-rose-400 hover:text-rose-300 font-black text-xs uppercase tracking-wider rounded-xl transition-all"
-                      >
-                        Disconnect Account
-                      </button>
-                    ) : (
-                      <button
-                        onClick={handleConnectDrive}
-                        disabled={isConnectingDrive}
-                        className="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:from-slate-700 disabled:to-slate-800 disabled:text-slate-400 font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-lg shadow-blue-500/10 flex items-center gap-2"
-                      >
-                        {isConnectingDrive ? (
-                          <>
-                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                            Connecting...
-                          </>
-                        ) : (
-                          <>Connect Google Drive</>
-                        )}
-                      </button>
-                    )}
+                  <div className="mt-6 pt-4 border-t border-white/10 flex items-center gap-3 w-full">
+                    {(() => {
+                      const isManual = driveSetupMethod === 'manual';
+                      const isConnected = isManual ? !!settings.driveConfig?.manualToken : !!settings.driveConfig?.connectedEmail;
+
+                      if (isConnected) {
+                        return (
+                          <button
+                            type="button"
+                            onClick={handleDisconnectDrive}
+                            className="px-4 py-2 bg-rose-600/10 hover:bg-rose-600/20 border border-rose-500/20 text-rose-400 hover:text-rose-300 font-black text-xs uppercase tracking-wider rounded-xl transition-all"
+                          >
+                            Disconnect / Reset Token
+                          </button>
+                        );
+                      } else if (isManual) {
+                        return (
+                          <div className="flex flex-col gap-2.5 w-full">
+                            <label className="text-[10px] text-slate-400 uppercase tracking-widest font-black">Google Access Token</label>
+                            <div className="flex gap-2 w-full">
+                              <input
+                                type="password"
+                                placeholder="ya29.a0Acv..."
+                                value={manualDriveToken}
+                                onChange={(e) => setManualDriveToken(e.target.value)}
+                                className="flex-1 px-3.5 py-2.5 bg-black/40 border border-white/10 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-emerald-500/50"
+                              />
+                              <button
+                                type="button"
+                                onClick={handleSaveManualDriveToken}
+                                className="px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-blue-600 hover:from-emerald-500 hover:to-blue-500 text-white font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-md shadow-emerald-500/10"
+                              >
+                                Save Token
+                              </button>
+                            </div>
+                            <span className="text-[10px] text-slate-500 leading-normal">
+                              No Firebase auth domains are required in this mode! Simply generate a temporary or long-lived Google OAuth access token and paste it here. Perfect for custom server, localhost, or quick setups.
+                            </span>
+                          </div>
+                        );
+                      } else {
+                        return (
+                          <button
+                            type="button"
+                            onClick={handleConnectDrive}
+                            disabled={isConnectingDrive}
+                            className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-blue-600 hover:from-emerald-500 hover:to-blue-500 disabled:from-slate-700 disabled:to-slate-800 disabled:text-slate-400 font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-lg shadow-emerald-500/10 flex items-center gap-2"
+                          >
+                            {isConnectingDrive ? (
+                              <>
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                Connecting...
+                              </>
+                            ) : (
+                              <>Connect Google Drive</>
+                            )}
+                          </button>
+                        );
+                      }
+                    })()}
                   </div>
                 </div>
 
@@ -1619,7 +1742,7 @@ export default function AdminDashboard({
                         <input
                           type="checkbox"
                           checked={settings.driveConfig?.enabled || false}
-                          disabled={!settings.driveConfig?.connectedEmail}
+                          disabled={!isDriveConnected}
                           onChange={(e) => {
                             if (!settings.driveConfig) return;
                             onSaveSettings({
@@ -1640,7 +1763,7 @@ export default function AdminDashboard({
                           type="text"
                           placeholder="Paste folder link (e.g. https://drive.google.com/drive/folders/...) or type folder name"
                           value={settings.driveConfig?.folderName || ''}
-                          disabled={!settings.driveConfig?.connectedEmail}
+                          disabled={!isDriveConnected}
                           onChange={(e) => {
                             if (!settings.driveConfig) return;
                             onSaveSettings({
@@ -1660,7 +1783,7 @@ export default function AdminDashboard({
                     </div>
                   </div>
 
-                  {settings.driveConfig?.connectedEmail && (
+                  {isDriveConnected && (
                     <div className="mt-6 pt-4 border-t border-white/10 flex items-center justify-between">
                       <button
                         onClick={handleTestDriveConnection}

@@ -574,16 +574,20 @@ export default function App() {
     }
 
     // If Google Drive automatic upload is configured
-    if (settings.driveConfig?.enabled && settings.driveConfig.accessToken && !session.driveFileId) {
+    const driveConfig = settings.driveConfig;
+    const isManualDrive = driveConfig?.authMethod === 'manual';
+    const activeDriveToken = isManualDrive ? driveConfig?.manualToken : driveConfig?.accessToken;
+
+    if (driveConfig?.enabled && activeDriveToken && !session.driveFileId) {
       console.log('[DRIVE] Auto-uploading photostrip to Google Drive...');
       try {
         const folderId = await getOrCreateFolder(
-          settings.driveConfig.accessToken,
-          settings.driveConfig.folderName || 'Photobooth Kiosk Photos'
+          activeDriveToken,
+          driveConfig.folderName || 'Photobooth Kiosk Photos'
         );
         const fileName = `Photostrip_${session.id}.png`;
         const result = await uploadPhotostripToDrive(
-          settings.driveConfig.accessToken,
+          activeDriveToken,
           session.photostripUrl,
           fileName,
           folderId

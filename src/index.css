@@ -53,8 +53,8 @@
 
 .glass-input:focus {
   background: rgba(0, 0, 0, 0.45);
-  border-color: rgba(99, 102, 241, 0.6);
-  box-shadow: 0 0 15px rgba(99, 102, 241, 0.25);
+  border-color: rgba(16, 185, 129, 0.6);
+  box-shadow: 0 0 15px rgba(16, 185, 129, 0.25);
   outline: none;
 }
 
@@ -62,6 +62,6 @@
   box-shadow: 0 0 20px rgba(59, 130, 246, 0.4);
 }
 
-.glow-purple {
-  box-shadow: 0 0 20px rgba(168, 85, 247, 0.4);
+.glow-green {
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.4);
 }

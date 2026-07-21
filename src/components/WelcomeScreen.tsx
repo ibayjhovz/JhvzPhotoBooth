@@ -114,7 +114,7 @@ export default function WelcomeScreen({
     >
       {/* Background Ambient Glows */}
       <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl pointer-events-none animate-pulse"></div>
-      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl pointer-events-none animate-pulse delay-700"></div>
+      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none animate-pulse delay-700"></div>
 
       {/* Top Header Row / Navigation */}
       <div className="w-full max-w-6xl flex justify-between items-center z-10 bg-white/5 dark:bg-white/5 backdrop-blur-md border border-white/10 rounded-3xl px-6 py-4 shadow-xl">
@@ -129,7 +129,7 @@ export default function WelcomeScreen({
               id="event-logo"
             />
           ) : (
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-blue-500 to-purple-600 flex items-center justify-center text-white font-black text-lg shadow-lg">
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-emerald-400 to-blue-600 flex items-center justify-center text-white font-black text-lg shadow-lg">
               P
             </div>
           )}
@@ -222,14 +222,14 @@ export default function WelcomeScreen({
           <h2 className="text-4xl md:text-6xl font-black tracking-tight font-display drop-shadow-lg mb-5 text-white">
             {activeEvent.name}
           </h2>
-          <div className="h-1 w-28 bg-gradient-to-r from-blue-500 to-purple-600 mx-auto rounded-full shadow-[0_0_8px_rgba(59,130,246,0.5)]"></div>
+          <div className="h-1 w-28 bg-gradient-to-r from-emerald-400 to-blue-500 mx-auto rounded-full shadow-[0_0_8px_rgba(52,211,153,0.5)]"></div>
         </div>
 
         {/* Big Pulsing Touch Trigger with neon-glow */}
         <div className="group relative">
           {/* Glowing background blur rings */}
-          <div className="absolute -inset-2 bg-gradient-to-tr from-blue-600 to-purple-600 rounded-full blur-[24px] opacity-40 group-hover:opacity-60 group-hover:blur-[28px] transition-all duration-500"></div>
-          <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-blue-500 to-purple-600 animate-ping opacity-25 pointer-events-none duration-1000"></div>
+          <div className="absolute -inset-2 bg-gradient-to-tr from-emerald-500 to-blue-600 rounded-full blur-[24px] opacity-40 group-hover:opacity-60 group-hover:blur-[28px] transition-all duration-500"></div>
+          <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-emerald-400 to-blue-500 animate-ping opacity-25 pointer-events-none duration-1000"></div>
 
           <button
             onClick={onStart}
@@ -237,7 +237,7 @@ export default function WelcomeScreen({
             id="btn-start-session"
           >
             <div className="flex flex-col items-center justify-center p-6">
-              <Camera className="w-12 sm:w-14 h-12 sm:h-14 mb-4 text-transparent bg-clip-text bg-gradient-to-tr from-blue-400 to-purple-400 animate-float" style={{ animationDuration: '3s' }} />
+              <Camera className="w-12 sm:w-14 h-12 sm:h-14 mb-4 text-transparent bg-clip-text bg-gradient-to-tr from-emerald-400 to-blue-400 animate-float" style={{ animationDuration: '3s' }} />
               <span className="text-sm sm:text-base font-black tracking-[0.15em] uppercase text-white leading-tight max-w-[150px]">
                 {translate('tapStart')}
               </span>

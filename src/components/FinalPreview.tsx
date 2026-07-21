@@ -295,16 +295,19 @@ export default function FinalPreview({
       const sessionId = `session-${Date.now()}`;
 
       // 1. Google Drive Upload
-      if (settings.driveConfig?.enabled && settings.driveConfig.accessToken) {
+      const isManualDrive = settings.driveConfig?.authMethod === 'manual';
+      const activeDriveToken = isManualDrive ? settings.driveConfig?.manualToken : settings.driveConfig?.accessToken;
+
+      if (settings.driveConfig?.enabled && activeDriveToken) {
         console.log('[DRIVE-PREVIEW] Auto-uploading photostrip to Google Drive for QR link...');
         try {
           const folderId = await getOrCreateFolder(
-            settings.driveConfig.accessToken,
+            activeDriveToken,
             settings.driveConfig.folderName || 'Photobooth Kiosk Photos'
           );
           const fileName = `Photostrip_${sessionId}.png`;
           const result = await uploadPhotostripToDrive(
-            settings.driveConfig.accessToken,
+            activeDriveToken,
             photostripUrl,
             fileName,
             folderId
@@ -473,7 +476,8 @@ export default function FinalPreview({
   };
 
   const sendEmailViaGmailApiDirectly = async (targetEmail: string): Promise<boolean> => {
-    const token = settings.driveConfig?.accessToken;
+    const isManualDrive = settings.driveConfig?.authMethod === 'manual';
+    const token = isManualDrive ? settings.driveConfig?.manualToken : settings.driveConfig?.accessToken;
     if (!token) return false;
 
     try {
@@ -545,7 +549,9 @@ export default function FinalPreview({
     setEmailStatus('sending');
 
     // If Google account is connected, attempt client-side direct dispatch first
-    if (settings.driveConfig?.accessToken) {
+    const isManualDrive = settings.driveConfig?.authMethod === 'manual';
+    const activeDriveToken = isManualDrive ? settings.driveConfig?.manualToken : settings.driveConfig?.accessToken;
+    if (activeDriveToken) {
       const success = await sendEmailViaGmailApiDirectly(guestEmail);
       if (success) return;
     }
@@ -561,7 +567,7 @@ export default function FinalPreview({
           subject: activeEvent.emailSubject,
           body: activeEvent.emailBody,
           config: emailConfig,
-          googleAccessToken: settings.driveConfig?.accessToken,
+          googleAccessToken: activeDriveToken,
         })
       );
     } else {
@@ -580,7 +586,9 @@ export default function FinalPreview({
     setEmailStatus('sending');
 
     // If Google account is connected, attempt client-side direct dispatch first
-    if (settings.driveConfig?.accessToken) {
+    const isManualDrive = settings.driveConfig?.authMethod === 'manual';
+    const activeDriveToken = isManualDrive ? settings.driveConfig?.manualToken : settings.driveConfig?.accessToken;
+    if (activeDriveToken) {
       const success = await sendEmailViaGmailApiDirectly(targetEmail);
       if (success) return;
     }
@@ -596,7 +604,7 @@ export default function FinalPreview({
           subject: activeEvent.emailSubject,
           body: activeEvent.emailBody,
           config: emailConfig,
-          googleAccessToken: settings.driveConfig?.accessToken,
+          googleAccessToken: activeDriveToken,
         })
       );
     } else {
@@ -1016,7 +1024,7 @@ export default function FinalPreview({
             )}
 
             {/* Real-time System Email Connection Helper */}
-            {!settings.driveConfig?.accessToken ? (
+            {!(settings.driveConfig?.authMethod === 'manual' ? settings.driveConfig?.manualToken : settings.driveConfig?.accessToken) ? (
               <div className="mt-2.5 p-3.5 bg-blue-500/10 border border-blue-500/15 rounded-xl flex flex-col gap-2.5 animate-fade-in">
                 <div className="flex gap-2.5 items-start">
                   <Cloud className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
