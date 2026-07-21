@@ -740,6 +740,7 @@ export default function App() {
               saveSession={handleSaveSessionRecord}
               settings={settings}
               emailConfig={emailConfig}
+              onSaveSettings={handleSaveSettings}
             />
           ) : (
             <div className="min-h-screen bg-slate-950 flex flex-col justify-center items-center p-6 select-none">

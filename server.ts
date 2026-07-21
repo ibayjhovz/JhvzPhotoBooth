@@ -211,78 +211,144 @@ async function startServer() {
             return;
           }
 
+          const googleAccessToken = payload.googleAccessToken;
           const effectiveSmtp = getEffectiveSmtpConfig(config);
-          console.log(`[SMTP SPOOL] Dispatched photostrip mail request to: ${email} using strategy: ${effectiveSmtp.deliveryStrategy}`);
+          console.log(`[SMTP SPOOL] Dispatched photostrip mail request to: ${email}`);
           stats.totalEmails += 1;
           saveStats();
           broadcastStatus();
 
           const strategy = effectiveSmtp.deliveryStrategy;
 
-          if (strategy === 'simulated') {
-            console.log(`[SMTP SIMULATED] Strategy is simulated. Sending instant success to client for: ${email}`);
-            setTimeout(() => {
-              ws.send(JSON.stringify({ type: 'email:sent', email: email, simulated: true }));
-            }, 1200);
-            return;
-          }
+          // 1. Prioritize real-time Gmail API if Google Account is connected
+          if (googleAccessToken) {
+            console.log(`[GMAIL API SENDER] Initiating real-time dispatch to ${email} via Gmail API...`);
+            
+            const b64Subject = Buffer.from(subject).toString('base64');
+            const cleanBase64 = photostrip.replace(/^data:image\/\w+;base64,/, "");
 
-          if (strategy === 'mailto') {
-            console.log(`[SMTP MAILTO] Strategy is browser mailto. Simulating immediate success on server for: ${email}`);
-            setTimeout(() => {
-              ws.send(JSON.stringify({ type: 'email:sent', email: email, mailto: true }));
-            }, 600);
-            return;
-          }
+            const mimeMessage = [
+              `To: ${email}`,
+              `Subject: =?utf-8?B?${b64Subject}?=`,
+              `MIME-Version: 1.0`,
+              `Content-Type: multipart/mixed; boundary="foo_bar_baz"`,
+              ``,
+              `--foo_bar_baz`,
+              `Content-Type: text/plain; charset="UTF-8"`,
+              `Content-Transfer-Encoding: 7bit`,
+              ``,
+              `${body}\n\nEnjoy your high-resolution photostrip!`,
+              ``,
+              `--foo_bar_baz`,
+              `Content-Type: image/png; name="photostrip_${Date.now()}.png"`,
+              `Content-Disposition: attachment; filename="photostrip_${Date.now()}.png"`,
+              `Content-Transfer-Encoding: base64`,
+              ``,
+              cleanBase64,
+              ``,
+              `--foo_bar_baz--`
+            ].join('\r\n');
 
-          // Default SMTP strategy
-          if (effectiveSmtp.isValid) {
-            console.log(`[SMTP SENDER] Initializing SMTP transport for ${effectiveSmtp.host}:${effectiveSmtp.port}`);
-            const transporter = nodemailer.createTransport({
-              host: effectiveSmtp.host,
-              port: effectiveSmtp.port,
-              secure: effectiveSmtp.port === 465,
-              auth: {
-                user: effectiveSmtp.user,
-                pass: effectiveSmtp.pass,
+            const raw = Buffer.from(mimeMessage)
+              .toString('base64')
+              .replace(/\+/g, '-')
+              .replace(/\//g, '_')
+              .replace(/=+$/, '');
+
+            fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${googleAccessToken}`,
+                'Content-Type': 'application/json',
               },
-              tls: {
-                rejectUnauthorized: false
-              }
-            });
-
-            // Convert base64 data URL to buffer for nodemailer attachment
-            const base64Data = photostrip.replace(/^data:image\/\w+;base64,/, "");
-            const imageBuffer = Buffer.from(base64Data, 'base64');
-
-            const mailOptions = {
-              from: `"${effectiveSmtp.senderName}" <${effectiveSmtp.senderEmail}>`,
-              to: email,
-              subject: subject,
-              text: `${body}\n\nEnjoy your high-resolution photostrip!`,
-              attachments: [
-                {
-                  filename: `photostrip_${Date.now()}.png`,
-                  content: imageBuffer,
-                  contentType: 'image/png'
-                }
-              ]
-            };
-
-            transporter.sendMail(mailOptions, (error, info) => {
-              if (error) {
-                console.error('[SMTP ERROR] Failed to send real email:', error);
-                ws.send(JSON.stringify({ type: 'email:failed', email: email, error: error.message }));
-              } else {
-                console.log('[SMTP SUCCESS] Email sent successfully via SMTP:', info.messageId);
+              body: JSON.stringify({ raw })
+            })
+            .then(async (response) => {
+              if (response.ok) {
+                console.log('[GMAIL API SUCCESS] Real-time email sent successfully via connected Gmail!');
                 ws.send(JSON.stringify({ type: 'email:sent', email: email }));
+              } else {
+                const errText = await response.text();
+                console.error('[GMAIL API ERROR] Google API failed:', errText);
+                throw new Error(errText);
               }
+            })
+            .catch((err) => {
+              console.warn('[GMAIL API FALLBACK] Failing back to standard SMTP...', err.message);
+              dispatchSmtp();
             });
           } else {
-            console.log(`[SMTP MOCK] SMTP not configured. Simulating dispatch to: ${email}`);
-            setTimeout(() => {
-              ws.send(JSON.stringify({ type: 'email:sent', email: email, simulated: true }));
-            }, 1000);
+            dispatchSmtp();
+          }
+
+          function dispatchSmtp() {
+            if (strategy === 'simulated') {
+              console.log(`[SMTP SIMULATED] Strategy is simulated. Sending mock success to client for: ${email}`);
+              setTimeout(() => {
+                ws.send(JSON.stringify({ type: 'email:sent', email: email, simulated: true }));
+              }, 1200);
+              return;
+            }
+
+            if (strategy === 'mailto') {
+              console.log(`[SMTP MAILTO] Strategy is browser mailto. Sending mock success to client for: ${email}`);
+              setTimeout(() => {
+                ws.send(JSON.stringify({ type: 'email:sent', email: email, mailto: true }));
+              }, 600);
+              return;
+            }
+
+            // Default SMTP strategy
+            if (effectiveSmtp.isValid) {
+              console.log(`[SMTP SENDER] Initializing SMTP transport for ${effectiveSmtp.host}:${effectiveSmtp.port}`);
+              const transporter = nodemailer.createTransport({
+                host: effectiveSmtp.host,
+                port: effectiveSmtp.port,
+                secure: effectiveSmtp.port === 465,
+                auth: {
+                  user: effectiveSmtp.user,
+                  pass: effectiveSmtp.pass,
+                },
+                tls: {
+                  rejectUnauthorized: false
+                }
+              });
+
+              // Convert base64 data URL to buffer for nodemailer attachment
+              const base64Data = photostrip.replace(/^data:image\/\w+;base64,/, "");
+              const imageBuffer = Buffer.from(base64Data, 'base64');
+
+              const mailOptions = {
+                from: `"${effectiveSmtp.senderName}" <${effectiveSmtp.senderEmail}>`,
+                to: email,
+                subject: subject,
+                text: `${body}\n\nEnjoy your high-resolution photostrip!`,
+                attachments: [
+                  {
+                    filename: `photostrip_${Date.now()}.png`,
+                    content: imageBuffer,
+                    contentType: 'image/png'
+                  }
+                ]
+              };
+
+              transporter.sendMail(mailOptions, (error, info) => {
+                if (error) {
+                  console.error('[SMTP ERROR] Failed to send real email:', error);
+                  ws.send(JSON.stringify({ type: 'email:failed', email: email, error: error.message }));
+                } else {
+                  console.log('[SMTP SUCCESS] Email sent successfully via SMTP:', info.messageId);
+                  ws.send(JSON.stringify({ type: 'email:sent', email: email }));
+                }
+              });
+            } else {
+              console.warn(`[SMTP ERROR] Real-time SMTP not configured for dispatch to: ${email}`);
+              ws.send(JSON.stringify({ 
+                type: 'email:failed', 
+                email: email, 
+                error: 'Real-time SMTP not configured. Please connect your Google account or provide custom SMTP credentials in the Admin Dashboard.' 
+              }));
+            }
           }
 
         } else if (payload.type === 'email:test') {
@@ -336,6 +402,12 @@ async function startServer() {
           saveStats();
 
           // Broadcast updated status with new counters to all kiosks & admin consoles
+          broadcastStatus();
+        } else if (payload.type === 'printer:set_connected') {
+          stats.printerConnected = !!payload.connected;
+          stats.printerStatus = stats.printerConnected ? 'Idle Ready' : 'Offline/Disconnected';
+          console.log(`[PRINTER STATUS] Printer connection updated. Connected: ${stats.printerConnected}`);
+          saveStats();
           broadcastStatus();
         } else if (payload.type === 'camera:test') {
           console.log('[CALIBRATION] Executed hardware shutter test beep.');

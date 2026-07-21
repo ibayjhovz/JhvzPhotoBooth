@@ -33,6 +33,7 @@ if (typeof window !== 'undefined') {
 
 const provider = new GoogleAuthProvider();
 provider.addScope('https://www.googleapis.com/auth/drive.file');
+provider.addScope('https://www.googleapis.com/auth/gmail.send');
 
 let isSigningIn = false;
 let cachedAccessToken: string | null = null;

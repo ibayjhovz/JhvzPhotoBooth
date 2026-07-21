@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Mail, Printer, Download, QrCode, ArrowRight, CheckCircle, RefreshCw, Loader2, Link, AlertTriangle, ExternalLink } from 'lucide-react';
+import { Mail, Printer, Download, QrCode, ArrowRight, CheckCircle, RefreshCw, Loader2, Link, AlertTriangle, ExternalLink, Cloud } from 'lucide-react';
 import { CompanionStatus, EventFrame, PhotoboothEvent, Session, AppSettings, EmailConfig } from '../types';
 import QRCode from 'qrcode';
 import { getOrCreateFolder, uploadPhotostripToDrive } from '../utils/googleDrive';
 import { uploadToPublicFallback } from '../utils/publicUpload';
 import { compressBase64Image } from '../utils/imageCompression';
+import { googleSignIn } from '../utils/firebaseAuth';
 
 interface FinalPreviewProps {
   photostripUrl: string;
@@ -18,6 +19,7 @@ interface FinalPreviewProps {
   saveSession: (session: Session) => void;
   settings: AppSettings;
   emailConfig: EmailConfig;
+  onSaveSettings: (updated: AppSettings) => void;
 }
 
 export default function FinalPreview({
@@ -32,6 +34,7 @@ export default function FinalPreview({
   saveSession,
   settings,
   emailConfig,
+  onSaveSettings,
 }: FinalPreviewProps) {
   const [emailStatus, setEmailStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [printStatus, setPrintStatus] = useState<'idle' | 'spooling' | 'printing' | 'printed' | 'error'>('idle');
@@ -429,12 +432,116 @@ export default function FinalPreview({
     runUploaderAndSetup();
   }, [photostripUrl]);
 
-  const handleSendEmail = () => {
+  const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
+
+  const handleConnectGoogleFromPreview = async () => {
+    setIsConnectingGoogle(true);
+    try {
+      const result = await googleSignIn();
+      if (result) {
+        onSaveSettings({
+          ...settings,
+          driveConfig: {
+            enabled: true,
+            folderName: settings.driveConfig?.folderName || 'Photobooth Kiosk Photos',
+            connectedEmail: result.user.email || '',
+            connectedName: result.user.displayName || '',
+            accessToken: result.accessToken,
+          }
+        });
+        setNotification({
+          message: `Successfully connected Google account (${result.user.email})! Automatic real-time email sending via Gmail API is now active.`,
+          type: 'success'
+        });
+      }
+    } catch (err: any) {
+      console.error('Failed to connect Google:', err);
+      setNotification({
+        message: `Google connection failed: ${err.message || err}`,
+        type: 'error'
+      });
+    } finally {
+      setIsConnectingGoogle(false);
+    }
+  };
+
+  const sendEmailViaGmailApiDirectly = async (targetEmail: string): Promise<boolean> => {
+    const token = settings.driveConfig?.accessToken;
+    if (!token) return false;
+
+    try {
+      console.log('[GMAIL-CLIENT] Constructing raw MIME message...');
+      const cleanBase64 = photostripUrl.replace(/^data:image\/\w+;base64,/, "");
+      const subject = activeEvent.emailSubject || 'Your memories are ready!';
+      const body = activeEvent.emailBody || 'Thanks for taking photos with us!';
+      
+      const b64Subject = btoa(unescape(encodeURIComponent(subject)));
+      
+      const mimeMessage = [
+        `To: ${targetEmail}`,
+        `Subject: =?utf-8?B?${b64Subject}?=`,
+        `MIME-Version: 1.0`,
+        `Content-Type: multipart/mixed; boundary="foo_bar_baz"`,
+        ``,
+        `--foo_bar_baz`,
+        `Content-Type: text/plain; charset="UTF-8"`,
+        `Content-Transfer-Encoding: 7bit`,
+        ``,
+        `${body}\n\nEnjoy your high-resolution photostrip!`,
+        ``,
+        `--foo_bar_baz`,
+        `Content-Type: image/png; name="photostrip_${Date.now()}.png"`,
+        `Content-Disposition: attachment; filename="photostrip_${Date.now()}.png"`,
+        `Content-Transfer-Encoding: base64`,
+        ``,
+        cleanBase64,
+        ``,
+        `--foo_bar_baz--`
+      ].join('\r\n');
+
+      const raw = btoa(unescape(encodeURIComponent(mimeMessage)))
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
+
+      console.log('[GMAIL-CLIENT] Dispatching Gmail API call...');
+      const response = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ raw })
+      });
+
+      if (response.ok) {
+        console.log('[GMAIL-CLIENT] Email sent successfully via Gmail API!');
+        setIsLastEmailSimulated(false);
+        setEmailStatus('sent');
+        return true;
+      } else {
+        const errText = await response.text();
+        console.error('[GMAIL-CLIENT] Gmail API error:', errText);
+        return false;
+      }
+    } catch (err) {
+      console.error('[GMAIL-CLIENT] Gmail API exception:', err);
+      return false;
+    }
+  };
+
+  const handleSendEmail = async () => {
     if (!guestEmail || !guestEmail.includes('@')) {
       setEmailStatus('idle');
       return;
     }
     setEmailStatus('sending');
+
+    // If Google account is connected, attempt client-side direct dispatch first
+    if (settings.driveConfig?.accessToken) {
+      const success = await sendEmailViaGmailApiDirectly(guestEmail);
+      if (success) return;
+    }
 
     // Notify backend companion to send the email
     if (wsSocket && wsSocket.readyState === WebSocket.OPEN) {
@@ -447,6 +554,7 @@ export default function FinalPreview({
           subject: activeEvent.emailSubject,
           body: activeEvent.emailBody,
           config: emailConfig,
+          googleAccessToken: settings.driveConfig?.accessToken,
         })
       );
     } else {
@@ -458,11 +566,17 @@ export default function FinalPreview({
     }
   };
 
-  const handleSendCustomEmail = (targetEmail: string) => {
+  const handleSendCustomEmail = async (targetEmail: string) => {
     if (!targetEmail || !targetEmail.includes('@')) {
       return;
     }
     setEmailStatus('sending');
+
+    // If Google account is connected, attempt client-side direct dispatch first
+    if (settings.driveConfig?.accessToken) {
+      const success = await sendEmailViaGmailApiDirectly(targetEmail);
+      if (success) return;
+    }
 
     // Notify backend companion to send the email
     if (wsSocket && wsSocket.readyState === WebSocket.OPEN) {
@@ -475,6 +589,7 @@ export default function FinalPreview({
           subject: activeEvent.emailSubject,
           body: activeEvent.emailBody,
           config: emailConfig,
+          googleAccessToken: settings.driveConfig?.accessToken,
         })
       );
     } else {
@@ -483,6 +598,27 @@ export default function FinalPreview({
         setIsLastEmailSimulated(true);
         setEmailStatus('sent');
       }, 1800);
+    }
+  };
+
+  const handleTogglePrinterConnection = () => {
+    if (wsSocket && wsSocket.readyState === WebSocket.OPEN) {
+      wsSocket.send(
+        JSON.stringify({
+          type: 'printer:set_connected',
+          connected: !companionStatus.printerConnected,
+        })
+      );
+      setNotification({
+        message: companionStatus.printerConnected ? 'Disconnecting printer...' : 'Connecting printer...',
+        type: 'success'
+      });
+    } else {
+      // Offline fallback: simulate connection toggle
+      setNotification({
+        message: 'Kiosk server not connected. Local simulation of printer connection toggled.',
+        type: 'success'
+      });
     }
   };
 
@@ -871,6 +1007,46 @@ export default function FinalPreview({
                 )}
               </div>
             )}
+
+            {/* Real-time System Email Connection Helper */}
+            {!settings.driveConfig?.accessToken ? (
+              <div className="mt-2.5 p-3.5 bg-blue-500/10 border border-blue-500/15 rounded-xl flex flex-col gap-2.5 animate-fade-in">
+                <div className="flex gap-2.5 items-start">
+                  <Cloud className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[11px] font-extrabold text-blue-200 uppercase tracking-wide">Real-time System Email Sending</span>
+                    <p className="text-[10px] text-slate-300 leading-normal">
+                      Connect your Google Account to automatically send real emails with attachments directly to your guests instantly. No SMTP servers required!
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleConnectGoogleFromPreview}
+                  disabled={isConnectingGoogle}
+                  className="w-full py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-[11px] font-black uppercase tracking-wider rounded-lg transition-all flex items-center justify-center gap-1.5 shadow-md shadow-blue-950/20 cursor-pointer"
+                  id="btn-preview-connect-google"
+                >
+                  {isConnectingGoogle ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" /> Connecting...
+                    </>
+                  ) : (
+                    <>
+                      <Cloud className="w-3.5 h-3.5" /> Connect Google Account
+                    </>
+                  )}
+                </button>
+              </div>
+            ) : (
+              <div className="mt-2.5 px-3 py-2 bg-emerald-500/5 border border-emerald-500/15 rounded-xl flex items-center justify-between gap-2 text-[10px] text-slate-400 font-semibold animate-fade-in">
+                <span className="flex items-center gap-1.5">
+                  <Cloud className="w-3.5 h-3.5 text-emerald-400" />
+                  Real-time active: <strong className="text-emerald-300 font-extrabold">{settings.driveConfig.connectedEmail}</strong>
+                </span>
+                <span className="text-[9px] font-black uppercase text-emerald-400 tracking-wider bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/10">Google Link Ready</span>
+              </div>
+            )}
           </div>
 
           {/* Unified Save & Scan Container */}
@@ -1014,11 +1190,34 @@ export default function FinalPreview({
               </div>
             </div>
 
+            {/* Direct Printer Status & Connect Toggle */}
+            <div className="mb-4 p-3 bg-white/5 rounded-xl border border-white/5 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs animate-fade-in">
+              <div className="flex flex-col gap-0.5 text-left">
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Printer Connection:</span>
+                <span className={`font-extrabold flex items-center gap-1.5 ${companionStatus.printerConnected ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  <span className={`w-2 h-2 rounded-full ${companionStatus.printerConnected ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
+                  {companionStatus.printerConnected ? `Connected (${companionStatus.printerModel || 'DNP DS620'})` : 'Offline / Disconnected'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleTogglePrinterConnection}
+                className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg border transition-all cursor-pointer ${
+                  companionStatus.printerConnected
+                    ? 'bg-rose-500/10 hover:bg-rose-500/20 border-rose-500/20 text-rose-300'
+                    : 'bg-emerald-500/10 hover:bg-emerald-500/20 border-emerald-500/20 text-emerald-300 animate-pulse'
+                }`}
+                id="btn-toggle-printer-conn"
+              >
+                {companionStatus.printerConnected ? 'Disconnect Printer' : 'Connect / Ready Printer'}
+              </button>
+            </div>
+
             {/* Quick status indicator of the selected connection */}
             <div className="mb-4 text-[10px] font-semibold text-slate-400 bg-white/5 px-3 py-2 rounded-xl flex items-center justify-between">
               <span>Selected Pathway:</span>
               <span className="font-extrabold text-blue-300">
-                {printMethod === 'airprint' ? '🔗 System print dialog (Compatible with all Wi-Fi/AirPrint)' : `🔌 Kiosk Direct (${companionStatus.printerModel || 'Not Connected'})`}
+                {printMethod === 'airprint' ? '🔗 System print dialog (Compatible with all Wi-Fi/AirPrint)' : `🔌 Kiosk Direct (${companionStatus.printerModel || 'DNP DS620'})`}
               </span>
             </div>
 
