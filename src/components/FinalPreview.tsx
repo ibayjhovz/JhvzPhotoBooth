@@ -1,15 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Mail, Printer, Download, QrCode, ArrowRight, CheckCircle, RefreshCw, Loader2, Link, AlertTriangle, ExternalLink, Cloud, Copy } from 'lucide-react';
-import { CompanionStatus, EventFrame, PhotoboothEvent, Session, AppSettings, EmailConfig } from '../types';
+import { Printer, Download, QrCode, ArrowRight, CheckCircle, Loader2, Link, ExternalLink } from 'lucide-react';
+import { CompanionStatus, EventFrame, PhotoboothEvent, Session, AppSettings } from '../types';
 import QRCode from 'qrcode';
 import { getOrCreateFolder, uploadPhotostripToDrive } from '../utils/googleDrive';
 import { uploadToPublicFallback } from '../utils/publicUpload';
 import { compressBase64Image } from '../utils/imageCompression';
-import { googleSignIn } from '../utils/firebaseAuth';
 
 interface FinalPreviewProps {
   photostripUrl: string;
-  guestEmail: string;
+  guestEmail?: string;
   guestName?: string;
   activeEvent: PhotoboothEvent;
   selectedFrame: EventFrame;
@@ -18,14 +17,13 @@ interface FinalPreviewProps {
   wsSocket: WebSocket | null;
   saveSession: (session: Session) => void;
   settings: AppSettings;
-  emailConfig: EmailConfig;
   onSaveSettings: (updated: AppSettings) => void;
 }
 
 export default function FinalPreview({
   photostripUrl,
-  guestEmail,
-  guestName,
+  guestEmail = '',
+  guestName = '',
   activeEvent,
   selectedFrame,
   companionStatus,
@@ -33,40 +31,15 @@ export default function FinalPreview({
   wsSocket,
   saveSession,
   settings,
-  emailConfig,
-  onSaveSettings,
 }: FinalPreviewProps) {
-  const [emailStatus, setEmailStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [printStatus, setPrintStatus] = useState<'idle' | 'spooling' | 'printing' | 'printed' | 'error'>('idle');
   const [printCopies, setPrintCopies] = useState<number>(activeEvent.printCopies || 1);
   const [printProgress, setPrintProgress] = useState<number>(0);
-  const [authDomainError, setAuthDomainError] = useState<string | null>(null);
 
   const [qrUrl, setQrUrl] = useState<string>('');
   const [showQrModal, setShowQrModal] = useState<boolean>(false);
-  const [uploadedStripId, setUploadedStripId] = useState<string>('');
   const [isUploading, setIsUploading] = useState<boolean>(true);
   const [qrLinkUrl, setQrLinkUrl] = useState<string>('');
-
-  const [copiedLink, setCopiedLink] = useState<boolean>(false);
-
-  const getMailtoUrl = (targetEmail: string) => {
-    const subject = encodeURIComponent(activeEvent.emailSubject || 'Your memories are ready!');
-    const bodyText = `${activeEvent.emailBody || 'Thanks for taking photos with us!'}\n\nDownload Link: ${qrLinkUrl || 'Online Gallery'}`;
-    return `mailto:${targetEmail}?subject=${subject}&body=${encodeURIComponent(bodyText)}`;
-  };
-
-  const handleCopyLink = () => {
-    if (!qrLinkUrl) return;
-    navigator.clipboard.writeText(qrLinkUrl);
-    setCopiedLink(true);
-    setTimeout(() => setCopiedLink(false), 2000);
-  };
-
-  const [customEmail, setCustomEmail] = useState<string>('');
-  const [showEmailInput, setShowEmailInput] = useState<boolean>(false);
-  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-  const [isLastEmailSimulated, setIsLastEmailSimulated] = useState<boolean>(false);
 
   // Print connection method: companion (USB Node.js backend) or AirPrint (Browser standard dialog)
   const [printMethod, setPrintMethod] = useState<'airprint' | 'companion'>(() => {
@@ -94,43 +67,11 @@ export default function FinalPreview({
     generateQR();
   }, [qrLinkUrl]);
 
-  const [recentEmails, setRecentEmails] = useState<string[]>([]);
-
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('photobooth_recent_emails');
-      if (saved) {
-        setRecentEmails(JSON.parse(saved));
-      }
-    } catch (e) {
-      console.warn('Error loading recent emails in FinalPreview:', e);
-    }
-  }, []);
-
-  const handleQuickDomain = (suffix: string) => {
-    const current = customEmail.trim();
-    if (!current) {
-      setCustomEmail('guest' + suffix);
-    } else {
-      const atIndex = current.indexOf('@');
-      if (atIndex === -1) {
-        setCustomEmail(current + suffix);
-      } else {
-        setCustomEmail(current.substring(0, atIndex) + suffix);
-      }
-    }
-  };
-
-  const handleSelectRecentEmail = (emailStr: string) => {
-    setCustomEmail(emailStr);
-  };
-
   const handleBrowserPrint = () => {
     setPrintStatus('spooling');
     setPrintProgress(10);
 
     try {
-      // Create an isolated hidden iframe
       const iframe = document.createElement('iframe');
       iframe.style.position = 'fixed';
       iframe.style.right = '0';
@@ -153,24 +94,9 @@ export default function FinalPreview({
           <head>
             <title>Print Photostrip</title>
             <style>
-              @page {
-                size: auto;
-                margin: 0mm;
-              }
-              body {
-                margin: 0;
-                padding: 0;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                background-color: white;
-              }
-              img {
-                max-width: 100%;
-                max-height: 100vh;
-                display: block;
-                page-break-inside: avoid;
-              }
+              @page { size: auto; margin: 0mm; }
+              body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; background-color: white; }
+              img { max-width: 100%; max-height: 100vh; display: block; page-break-inside: avoid; }
             </style>
           </head>
           <body>
@@ -178,17 +104,9 @@ export default function FinalPreview({
             <script>
               const img = document.getElementById('print-image');
               if (img.complete) {
-                setTimeout(() => {
-                  window.focus();
-                  window.print();
-                }, 500);
+                setTimeout(() => { window.focus(); window.print(); }, 500);
               } else {
-                img.onload = function() {
-                  setTimeout(() => {
-                    window.focus();
-                    window.print();
-                  }, 500);
-                };
+                img.onload = function() { setTimeout(() => { window.focus(); window.print(); }, 500); };
               }
             </script>
           </body>
@@ -199,12 +117,12 @@ export default function FinalPreview({
       setPrintStatus('printing');
       setPrintProgress(50);
 
-      // Transition spool progress
       setTimeout(() => {
         setPrintProgress(100);
         setPrintStatus('printed');
-        // Clean up the iframe
-        document.body.removeChild(iframe);
+        if (document.body.contains(iframe)) {
+          document.body.removeChild(iframe);
+        }
       }, 3500);
 
     } catch (err) {
@@ -213,77 +131,17 @@ export default function FinalPreview({
     }
   };
 
-  // Monitor emailStatus to trigger beautiful notification alerts
-  useEffect(() => {
-    if (emailStatus === 'sent') {
-      const target = customEmail || guestEmail || 'the client';
-      if (isLastEmailSimulated) {
-        setNotification({
-          message: `SMTP is not configured yet. You can click 'Webmail Draft' below to send instantly via your email client, or configure your Gmail App Password in Admin Settings for automated emails.`,
-          type: 'error'
-        });
-      } else {
-        setNotification({
-          message: `Your photostrip was successfully sent to ${target}! If it does not arrive in a minute, please check your Spam/Junk folder or verify your SMTP settings.`,
-          type: 'success'
-        });
-      }
-      const timer = setTimeout(() => {
-        setNotification(null);
-      }, 10000);
-      return () => clearTimeout(timer);
-    } else if (emailStatus === 'error') {
-      setNotification({
-        message: `SMTP delivery failed. Click the 'Webmail Draft' or 'Copy Link' buttons below for guaranteed instant dispatch!`,
-        type: 'error'
-      });
-      const timer = setTimeout(() => {
-        setNotification(null);
-      }, 10000);
-      return () => clearTimeout(timer);
-    }
-  }, [emailStatus, guestEmail, customEmail, isLastEmailSimulated]);
-
-  // Sync real-time WebSocket response for custom SMTP sending
-  useEffect(() => {
-    if (!wsSocket) return;
-
-    const handleMessage = (event: MessageEvent) => {
-      try {
-        const data = JSON.parse(event.data);
-        const isTargetEmail = data.email === guestEmail || (customEmail && data.email === customEmail);
-        if (data.type === 'email:sent' && isTargetEmail) {
-          setIsLastEmailSimulated(!!data.simulated);
-          setEmailStatus('sent');
-        } else if (data.type === 'email:failed' && isTargetEmail) {
-          setEmailStatus('error');
-        }
-      } catch (err) {
-        console.error('FinalPreview WS parsing error:', err);
-      }
-    };
-
-    wsSocket.addEventListener('message', handleMessage);
-    return () => {
-      wsSocket.removeEventListener('message', handleMessage);
-    };
-  }, [wsSocket, guestEmail, customEmail]);
-
-  // Auto-send email on completion if requested, and register Session
+  // Upload photostrip and save session
   useEffect(() => {
     setIsUploading(true);
 
-    // Resolve sharing origin for the QR code to ensure compatibility with other devices (e.g. phones)
     let sharingOrigin = window.location.origin;
     if (settings.customSharingUrl && settings.customSharingUrl.trim() !== '') {
       sharingOrigin = settings.customSharingUrl.trim().replace(/\/$/, '');
     } else if (!sharingOrigin || sharingOrigin === 'null' || sharingOrigin.includes('null') || sharingOrigin.includes('localhost') || sharingOrigin.includes('127.0.0.1')) {
-      // Fallback to the public pre-preview / production URL so mobile devices scanning the QR can download it
       sharingOrigin = 'https://ais-pre-2fwpniwqdw3q2peqbs3jv5-446615910495.asia-southeast1.run.app';
     }
 
-    // CRITICAL: Dev subdomain (ais-dev-) is protected and requires developer authentication.
-    // We automatically swap it with the public preview subdomain (ais-pre-) so QR scans work instantly on other devices.
     if (sharingOrigin && sharingOrigin.includes('ais-dev-')) {
       sharingOrigin = sharingOrigin.replace('ais-dev-', 'ais-pre-');
     }
@@ -299,7 +157,6 @@ export default function FinalPreview({
       const activeDriveToken = isManualDrive ? settings.driveConfig?.manualToken : settings.driveConfig?.accessToken;
 
       if (settings.driveConfig?.enabled && activeDriveToken) {
-        console.log('[DRIVE-PREVIEW] Auto-uploading photostrip to Google Drive for QR link...');
         try {
           const folderId = await getOrCreateFolder(
             activeDriveToken,
@@ -316,57 +173,44 @@ export default function FinalPreview({
             qrLink = result.webViewLink;
             driveFileId = result.id;
             driveViewLink = result.webViewLink;
-            console.log('[DRIVE-PREVIEW] Successfully uploaded! Direct View Link:', qrLink);
           }
         } catch (err) {
           console.error('[DRIVE-PREVIEW] Google Drive auto-upload failed:', err);
         }
       }
 
-      // 1.5. Public anonymous upload fallback (if Google Drive is NOT enabled/connected)
+      // 2. Public fallback upload
       if (!qrLink) {
-        console.log('[PUBLIC-PREVIEW] Google Drive not connected/enabled. Trying public fallback upload...');
         try {
           qrLink = await uploadToPublicFallback(photostripUrl);
-          console.log('[PUBLIC-PREVIEW] Successfully uploaded to public cloud fallback! Link:', qrLink);
         } catch (err) {
-          console.error('[PUBLIC-PREVIEW] Public cloud fallback upload failed, using local companion:', err);
+          console.error('[PUBLIC-PREVIEW] Public cloud fallback upload failed:', err);
         }
       }
 
-      // 2. Local Companion Server Upload
+      // 3. Companion Server Upload
       try {
         const res = await fetch('/api/photostrips', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ image: photostripUrl }),
         });
         if (res.ok) {
           const data = await res.json();
-          if (data.id) {
-            setUploadedStripId(data.id);
-            // Only set QR link to companion if we didn't successfully upload to Drive
-            if (!qrLink) {
-              qrLink = `${sharingOrigin}/?download=${data.id}`;
-            }
+          if (data.id && !qrLink) {
+            qrLink = `${sharingOrigin}/?download=${data.id}`;
           }
         }
       } catch (err) {
         console.error('[COMPANION-PREVIEW] Companion upload failed:', err);
       }
 
-      // 3. Fallback Link
       if (!qrLink) {
         qrLink = `${sharingOrigin}/download?session=${sessionId}`;
       }
 
-      // Store the link URL so we can display it in the modal
       setQrLinkUrl(qrLink);
-      console.log(`[QR GENERATED] Target scan link: ${qrLink}`);
 
-      // 4. Generate QR code
       try {
         const qrDataUrl = await QRCode.toDataURL(qrLink, {
           width: 300,
@@ -376,58 +220,35 @@ export default function FinalPreview({
         setQrUrl(qrDataUrl);
       } catch (err) {
         console.error('QR Code generation failed:', err);
-        // Fallback local QR
-        try {
-          const fallbackLink = `${sharingOrigin}/download?session=${sessionId}`;
-          setQrLinkUrl(fallbackLink);
-          const qrDataUrl = await QRCode.toDataURL(fallbackLink, {
-            width: 300,
-            margin: 1,
-            color: { dark: '#0F172A', light: '#FFFFFF' }
-          });
-          setQrUrl(qrDataUrl);
-        } catch (fbErr) {
-          console.error('Fallback QR Code generation failed too:', fbErr);
-        }
       }
 
       setIsUploading(false);
 
-      // Compress the photostrip to a lightweight JPEG (around 40KB-80KB) for permanent database & offline storage.
-      // This prevents Firestore document size limit failures (1MB) and LocalStorage quota exhaustion,
-      // while guaranteeing that the photos remain visible in the gallery permanently across browser sessions.
       let compressedStrip = '';
       try {
         compressedStrip = await compressBase64Image(photostripUrl, 450, 1350, 0.75);
-        console.log('[COMPRESSION] Successfully compressed photostrip. Base64 length:', compressedStrip.length);
       } catch (cErr) {
-        console.error('[COMPRESSION] Failed to compress, using original:', cErr);
         compressedStrip = photostripUrl;
       }
 
-      // 5. Create and save session
       const newSession: Session = {
         id: sessionId,
         date: new Date().toISOString(),
-        guestEmail,
-        guestName,
+        guestEmail: '',
+        guestName: '',
         frameId: selectedFrame.id,
-        photos: [], // filled if we store raw files
+        photos: [],
         photostripUrl: compressedStrip || qrLink || photostripUrl,
         printed: false,
         emailed: false,
         printCount: 0,
-        duration: 35, // estimated average
+        duration: 35,
         driveFileId,
         driveViewLink,
       };
 
       saveSession(newSession);
 
-      // 6. Auto-email!
-      handleSendEmail();
-
-      // 7. Auto-print if enabled in event
       if (activeEvent.autoPrint && companionStatus.printerConnected) {
         handlePrint();
       }
@@ -435,193 +256,6 @@ export default function FinalPreview({
 
     runUploaderAndSetup();
   }, [photostripUrl]);
-
-  const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
-
-  const handleConnectGoogleFromPreview = async () => {
-    setIsConnectingGoogle(true);
-    setAuthDomainError(null);
-    try {
-      const result = await googleSignIn();
-      if (result) {
-        onSaveSettings({
-          ...settings,
-          driveConfig: {
-            enabled: true,
-            folderName: settings.driveConfig?.folderName || 'Photobooth Kiosk Photos',
-            connectedEmail: result.user.email || '',
-            connectedName: result.user.displayName || '',
-            accessToken: result.accessToken,
-          }
-        });
-        setNotification({
-          message: `Successfully connected Google account (${result.user.email})! Automatic real-time email sending via Gmail API is now active.`,
-          type: 'success'
-        });
-      }
-    } catch (err: any) {
-      console.error('Failed to connect Google:', err);
-      const isAuthDomainErr = err.code === 'auth/unauthorized-domain' || err.message?.includes('unauthorized-domain');
-      const isProviderErr = err.code === 'auth/operation-not-allowed' || err.code === 'auth/invalid-actionCode' || err.message?.includes('invalid') || err.message?.includes('operation-not-allowed');
-
-      if (isAuthDomainErr) {
-        setAuthDomainError(window.location.hostname);
-      } else if (isProviderErr) {
-        setNotification({
-          message: `Google Sign-In is disabled in Firebase Console for jhvzphotobooth. Go to Admin Dashboard -> Email Settings to use the instant 10s Gmail App Password method instead!`,
-          type: 'error'
-        });
-      } else {
-        setNotification({
-          message: `Google connection failed: ${err.message || err}`,
-          type: 'error'
-        });
-      }
-    } finally {
-      setIsConnectingGoogle(false);
-    }
-  };
-
-  const sendEmailViaGmailApiDirectly = async (targetEmail: string): Promise<boolean> => {
-    const isManualDrive = settings.driveConfig?.authMethod === 'manual';
-    const token = isManualDrive ? settings.driveConfig?.manualToken : settings.driveConfig?.accessToken;
-    if (!token) return false;
-
-    try {
-      console.log('[GMAIL-CLIENT] Constructing raw MIME message...');
-      const cleanBase64 = photostripUrl.replace(/^data:image\/\w+;base64,/, "");
-      const subject = activeEvent.emailSubject || 'Your memories are ready!';
-      const body = activeEvent.emailBody || 'Thanks for taking photos with us!';
-      
-      const b64Subject = btoa(unescape(encodeURIComponent(subject)));
-      
-      const mimeMessage = [
-        `To: ${targetEmail}`,
-        `Subject: =?utf-8?B?${b64Subject}?=`,
-        `MIME-Version: 1.0`,
-        `Content-Type: multipart/mixed; boundary="foo_bar_baz"`,
-        ``,
-        `--foo_bar_baz`,
-        `Content-Type: text/plain; charset="UTF-8"`,
-        `Content-Transfer-Encoding: 7bit`,
-        ``,
-        `${body}\n\nEnjoy your high-resolution photostrip!`,
-        ``,
-        `--foo_bar_baz`,
-        `Content-Type: image/png; name="photostrip_${Date.now()}.png"`,
-        `Content-Disposition: attachment; filename="photostrip_${Date.now()}.png"`,
-        `Content-Transfer-Encoding: base64`,
-        ``,
-        cleanBase64,
-        ``,
-        `--foo_bar_baz--`
-      ].join('\r\n');
-
-      const raw = btoa(unescape(encodeURIComponent(mimeMessage)))
-        .replace(/\+/g, '-')
-        .replace(/\//g, '_')
-        .replace(/=+$/, '');
-
-      console.log('[GMAIL-CLIENT] Dispatching Gmail API call...');
-      const response = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ raw })
-      });
-
-      if (response.ok) {
-        console.log('[GMAIL-CLIENT] Email sent successfully via Gmail API!');
-        setIsLastEmailSimulated(false);
-        setEmailStatus('sent');
-        return true;
-      } else {
-        const errText = await response.text();
-        console.error('[GMAIL-CLIENT] Gmail API error:', errText);
-        return false;
-      }
-    } catch (err) {
-      console.error('[GMAIL-CLIENT] Gmail API exception:', err);
-      return false;
-    }
-  };
-
-  const handleSendEmail = async () => {
-    if (!guestEmail || !guestEmail.includes('@')) {
-      setEmailStatus('idle');
-      return;
-    }
-    setEmailStatus('sending');
-
-    // If Google account is connected, attempt client-side direct dispatch first
-    const isManualDrive = settings.driveConfig?.authMethod === 'manual';
-    const activeDriveToken = isManualDrive ? settings.driveConfig?.manualToken : settings.driveConfig?.accessToken;
-    if (activeDriveToken) {
-      const success = await sendEmailViaGmailApiDirectly(guestEmail);
-      if (success) return;
-    }
-
-    // Notify backend companion to send the email
-    if (wsSocket && wsSocket.readyState === WebSocket.OPEN) {
-      wsSocket.send(
-        JSON.stringify({
-          type: 'email:send',
-          email: guestEmail,
-          name: guestName || 'Guest',
-          photostrip: photostripUrl, // base64
-          subject: activeEvent.emailSubject,
-          body: activeEvent.emailBody,
-          config: emailConfig,
-          googleAccessToken: activeDriveToken,
-        })
-      );
-    } else {
-      // Since we are running full-stack in AI Studio, if websocket is offline, we fallback to simulated success
-      setTimeout(() => {
-        setIsLastEmailSimulated(true);
-        setEmailStatus('sent');
-      }, 1800);
-    }
-  };
-
-  const handleSendCustomEmail = async (targetEmail: string) => {
-    if (!targetEmail || !targetEmail.includes('@')) {
-      return;
-    }
-    setEmailStatus('sending');
-
-    // If Google account is connected, attempt client-side direct dispatch first
-    const isManualDrive = settings.driveConfig?.authMethod === 'manual';
-    const activeDriveToken = isManualDrive ? settings.driveConfig?.manualToken : settings.driveConfig?.accessToken;
-    if (activeDriveToken) {
-      const success = await sendEmailViaGmailApiDirectly(targetEmail);
-      if (success) return;
-    }
-
-    // Notify backend companion to send the email
-    if (wsSocket && wsSocket.readyState === WebSocket.OPEN) {
-      wsSocket.send(
-        JSON.stringify({
-          type: 'email:send',
-          email: targetEmail,
-          name: guestName || 'Guest',
-          photostrip: photostripUrl, // base64
-          subject: activeEvent.emailSubject,
-          body: activeEvent.emailBody,
-          config: emailConfig,
-          googleAccessToken: activeDriveToken,
-        })
-      );
-    } else {
-      // Since we are running full-stack in AI Studio, if websocket is offline, we fallback to simulated success
-      setTimeout(() => {
-        setIsLastEmailSimulated(true);
-        setEmailStatus('sent');
-      }, 1800);
-    }
-  };
 
   const handleTogglePrinterConnection = () => {
     if (wsSocket && wsSocket.readyState === WebSocket.OPEN) {
@@ -631,16 +265,6 @@ export default function FinalPreview({
           connected: !companionStatus.printerConnected,
         })
       );
-      setNotification({
-        message: companionStatus.printerConnected ? 'Disconnecting printer...' : 'Connecting printer...',
-        type: 'success'
-      });
-    } else {
-      // Offline fallback: simulate connection toggle
-      setNotification({
-        message: 'Kiosk server not connected. Local simulation of printer connection toggled.',
-        type: 'success'
-      });
     }
   };
 
@@ -653,7 +277,6 @@ export default function FinalPreview({
     setPrintStatus('spooling');
     setPrintProgress(10);
 
-    // Send print trigger to Node.js backend
     if (wsSocket && wsSocket.readyState === WebSocket.OPEN) {
       wsSocket.send(
         JSON.stringify({
@@ -665,7 +288,6 @@ export default function FinalPreview({
       );
     }
 
-    // Animate printing spooling bar
     const spoolTimer = setTimeout(() => {
       setPrintStatus('printing');
       setPrintProgress(40);
@@ -707,12 +329,11 @@ export default function FinalPreview({
       <div className="w-full max-w-5xl mx-auto flex justify-between items-center z-10 mb-6">
         <div className="flex flex-col">
           <h2 className="text-2xl sm:text-3xl font-black font-display tracking-tight text-white">Your Photostrip!</h2>
-          <p className="text-xs text-blue-300 font-medium mt-1">Ready for download, printing, and email</p>
+          <p className="text-xs text-blue-300 font-medium mt-1">Ready for download and printing</p>
         </div>
 
-        {/* Thank you note */}
         <div className="px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold rounded-xl flex items-center gap-1.5 animate-pulse">
-          <CheckCircle className="w-4 h-4 fill-none" /> Delivery processing...
+          <CheckCircle className="w-4 h-4 fill-none" /> Photo Ready!
         </div>
       </div>
 
@@ -733,347 +354,9 @@ export default function FinalPreview({
 
         {/* Right Hand: Touch Action Buttons */}
         <div className="w-full md:w-6/12 flex flex-col gap-5 justify-center">
-          {/* Email Delivery Status Panel */}
-          <div className="p-4 bg-white/5 border border-white/10 backdrop-blur-md rounded-2xl flex flex-col gap-3 shadow-md animate-fade-in">
-            <div className="flex items-center justify-between gap-4 w-full">
-              <div className="flex items-center gap-3">
-                <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl text-blue-400">
-                  <Mail className="w-6 h-6" />
-                </div>
-                <div>
-                  <h4 className="font-extrabold text-sm text-slate-100">Email Delivery</h4>
-                  <p className="text-xs text-blue-300 font-semibold mt-0.5">
-                    {guestEmail ? guestEmail : 'Email delivery was skipped'}
-                  </p>
-                </div>
-              </div>
-
-              {/* Email send actions */}
-              <div>
-                {guestEmail ? (
-                  <>
-                    {emailConfig.deliveryStrategy === 'mailto' ? (
-                      <div className="flex flex-col gap-1.5 items-end">
-                        <a
-                          href={getMailtoUrl(guestEmail)}
-                          onClick={handleSendEmail}
-                          className="flex items-center gap-1.5 text-xs text-emerald-400 font-extrabold bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 px-4 py-2 rounded-xl transition-all shadow-md shadow-emerald-500/5 animate-pulse"
-                          target="_blank"
-                          rel="noreferrer"
-                          id="mailto-client-send-btn"
-                        >
-                          <Mail className="w-3.5 h-3.5" /> Send Webmail Draft
-                        </a>
-                        <span className="text-[9px] text-slate-400 font-bold select-none text-right">Prefilled with guest link</span>
-                      </div>
-                    ) : (
-                      <>
-                        {emailStatus === 'sending' && (
-                          <div className="flex items-center gap-1 text-xs text-blue-400 font-bold bg-blue-500/10 border border-blue-500/20 px-3 py-1.5 rounded-lg animate-pulse">
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Sending...
-                          </div>
-                        )}
-                        {emailStatus === 'sent' && (
-                          <div className="flex flex-col gap-1.5 items-end">
-                            {isLastEmailSimulated ? (
-                              <>
-                                <div className="flex items-center gap-1 text-[11px] text-amber-400 font-bold bg-amber-500/10 border border-amber-500/20 px-2.5 py-1.5 rounded-lg">
-                                  <AlertTriangle className="w-3.5 h-3.5" /> Simulated (SMTP Incomplete)
-                                </div>
-                                <div className="flex gap-1.5 mt-1">
-                                  <a
-                                    href={getMailtoUrl(guestEmail)}
-                                    className="px-2.5 py-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 text-[10px] font-extrabold rounded-md transition-all flex items-center gap-1 shadow-md"
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    id="btn-simulated-mailto"
-                                  >
-                                    <Mail className="w-2.5 h-2.5" /> Send Real Email via Webmail
-                                  </a>
-                                  <button
-                                    onClick={handleCopyLink}
-                                    className="px-2 py-1.5 bg-blue-500/15 hover:bg-blue-500/25 border border-blue-500/30 text-blue-300 text-[10px] font-extrabold rounded-md transition-all"
-                                    id="btn-simulated-copy"
-                                  >
-                                    {copiedLink ? 'Copied!' : 'Copy Link'}
-                                  </button>
-                                </div>
-                              </>
-                            ) : (
-                              <div className="flex items-center gap-1 text-xs text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-lg">
-                                <CheckCircle className="w-3.5 h-3.5 fill-none" /> Delivered!
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        {emailStatus === 'error' && (
-                          <div className="flex flex-col gap-2 items-end">
-                            <span className="text-[10px] text-rose-400 font-bold select-none">Failed to send via SMTP</span>
-                            <div className="flex gap-1.5">
-                              <button
-                                onClick={handleSendEmail}
-                                className="px-2.5 py-1.5 bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 text-[11px] font-bold rounded-lg transition-all"
-                                id="btn-retry-smtp"
-                              >
-                                Retry SMTP
-                              </button>
-                              <a
-                                href={getMailtoUrl(guestEmail)}
-                                className="px-2.5 py-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 text-[11px] font-bold rounded-lg transition-all flex items-center gap-1"
-                                target="_blank"
-                                rel="noreferrer"
-                                id="btn-fallback-mailto"
-                              >
-                                <Mail className="w-3 h-3" /> Webmail
-                              </a>
-                              <button
-                                onClick={handleCopyLink}
-                                className="px-2.5 py-1.5 bg-blue-500/15 hover:bg-blue-500/25 border border-blue-500/30 text-blue-300 text-[11px] font-bold rounded-lg transition-all flex items-center gap-1"
-                                id="btn-fallback-copy"
-                              >
-                                <Link className="w-3 h-3" /> {copiedLink ? 'Copied!' : 'Copy Link'}
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                        {emailStatus === 'idle' && (
-                          <button
-                            onClick={handleSendEmail}
-                            className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-bold rounded-xl transition-all"
-                            id="btn-resend"
-                          >
-                            Send Again
-                          </button>
-                        )}
-                      </>
-                    )}
-                  </>
-                ) : (
-                  !showEmailInput && (
-                    <button
-                      onClick={() => setShowEmailInput(true)}
-                      className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-blue-500/10"
-                      id="btn-add-email"
-                    >
-                      Send Soft Copy
-                    </button>
-                  )
-                )}
-              </div>
-            </div>
-
-            {/* Inline Email Sender on the spot */}
-            {showEmailInput && !guestEmail && (
-              <div className="flex flex-col gap-2 mt-1 p-3 bg-black/40 border border-white/5 rounded-2xl animate-fade-in w-full">
-                <div className="flex gap-2 items-center w-full">
-                  <input
-                    type="email"
-                    value={customEmail}
-                    onChange={(e) => setCustomEmail(e.target.value)}
-                    placeholder="Enter email to receive soft copy..."
-                    className="flex-1 bg-transparent px-3 py-2 text-sm text-white placeholder-white/30 border-none focus:outline-none focus:ring-0"
-                    id="spot-email-input"
-                  />
-                  {emailConfig.deliveryStrategy === 'mailto' ? (
-                    <div className="flex gap-1.5 shrink-0">
-                      <a
-                        href={getMailtoUrl(customEmail)}
-                        onClick={() => {
-                          if (!customEmail || !customEmail.includes('@')) return;
-                          handleSendCustomEmail(customEmail);
-                        }}
-                        className={`px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black rounded-lg transition-all flex items-center gap-1 ${
-                          (!customEmail || !customEmail.includes('@')) ? 'opacity-50 pointer-events-none' : ''
-                        }`}
-                        target="_blank"
-                        rel="noreferrer"
-                        id="btn-send-spot-mailto"
-                      >
-                        <Mail className="w-3.5 h-3.5" /> Webmail Draft
-                      </a>
-                      <button
-                        onClick={() => setShowEmailInput(false)}
-                        className="px-2 py-1.5 text-xs text-slate-400 hover:text-white transition-all"
-                        id="btn-cancel-spot-email"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  ) : (
-                    <>
-                      {emailStatus === 'sending' ? (
-                        <div className="flex items-center gap-1 text-xs text-blue-400 font-bold bg-blue-500/10 border border-blue-500/20 px-3 py-1.5 rounded-lg animate-pulse shrink-0">
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Sending...
-                        </div>
-                      ) : emailStatus === 'sent' ? (
-                        <div className="flex flex-col gap-1.5 items-end shrink-0">
-                          {isLastEmailSimulated ? (
-                            <>
-                              <div className="flex items-center gap-1 text-[10px] text-amber-400 font-bold bg-amber-500/10 border border-amber-500/20 px-2 py-1 rounded-lg">
-                                <AlertTriangle className="w-3 h-3" /> Simulated Success
-                              </div>
-                              <div className="flex gap-1.5 mt-0.5">
-                                <a
-                                  href={getMailtoUrl(customEmail)}
-                                  className="px-2 py-1 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 text-[10px] font-extrabold rounded-md transition-all flex items-center gap-1"
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  id="btn-spot-simulated-mailto"
-                                >
-                                  <Mail className="w-2.5 h-2.5" /> Webmail Draft
-                                </a>
-                                <button
-                                  onClick={handleCopyLink}
-                                  className="px-2 py-1 bg-blue-500/15 hover:bg-blue-500/25 border border-blue-500/30 text-blue-300 text-[10px] font-extrabold rounded-md transition-all"
-                                  id="btn-spot-simulated-copy"
-                                >
-                                  {copiedLink ? 'Copied!' : 'Copy'}
-                                </button>
-                              </div>
-                            </>
-                          ) : (
-                            <div className="flex items-center gap-1 text-xs text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-lg">
-                              <CheckCircle className="w-3.5 h-3.5 fill-none" /> Sent!
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="flex gap-1.5 shrink-0">
-                          <button
-                            onClick={() => {
-                              if (!customEmail || !customEmail.includes('@')) return;
-                              handleSendCustomEmail(customEmail);
-                            }}
-                            disabled={!customEmail || !customEmail.includes('@')}
-                            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-bold rounded-lg transition-all"
-                            id="btn-send-spot-email"
-                          >
-                            Send
-                          </button>
-                          <button
-                            onClick={() => setShowEmailInput(false)}
-                            className="px-2 py-1.5 text-xs text-slate-400 hover:text-white transition-all"
-                            id="btn-cancel-spot-email"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-
-                {/* Touch-Friendly Suffix Toolbar inside Spot Input */}
-                <div className="flex flex-wrap gap-1 mt-1">
-                  {['@gmail.com', '@yahoo.com', '@outlook.com', '@icloud.com', '@hotmail.com'].map((domain) => (
-                    <button
-                      key={domain}
-                      type="button"
-                      onClick={() => handleQuickDomain(domain)}
-                      className="px-2 py-0.5 text-[10px] font-black bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/15 text-blue-300 rounded-md transition-all"
-                    >
-                      {domain}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Recent Guests Shortcut list inside Spot Input */}
-                {recentEmails.length > 0 && (
-                  <div className="mt-1 pt-1 border-t border-white/5">
-                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block mb-1">Recent:</span>
-                    <div className="flex flex-wrap gap-1">
-                      {recentEmails.map((recent) => (
-                        <button
-                          key={recent}
-                          type="button"
-                          onClick={() => handleSelectRecentEmail(recent)}
-                          className="px-2 py-0.5 text-[9px] font-medium bg-white/5 hover:bg-white/10 border border-white/5 text-slate-300 rounded truncate max-w-[140px]"
-                          title={recent}
-                        >
-                          {recent}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {emailStatus === 'error' && emailConfig.deliveryStrategy !== 'mailto' && (
-                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pt-2 border-t border-white/5 w-full">
-                    <span className="text-[10px] text-rose-400 font-bold">SMTP delivery failed</span>
-                    <div className="flex gap-1.5 w-full sm:w-auto justify-end">
-                      <button
-                        onClick={() => handleSendCustomEmail(customEmail)}
-                        className="px-2 py-1 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 text-[10px] font-bold rounded-md transition-all"
-                        id="btn-spot-retry-smtp"
-                      >
-                        Retry SMTP
-                      </button>
-                      <a
-                        href={getMailtoUrl(customEmail)}
-                        className="px-2 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-[10px] font-bold rounded-md transition-all flex items-center gap-1"
-                        target="_blank"
-                        rel="noreferrer"
-                        id="btn-spot-mailto"
-                      >
-                        <Mail className="w-2.5 h-2.5" /> Webmail
-                      </a>
-                      <button
-                        onClick={handleCopyLink}
-                        className="px-2 py-1 bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 text-[10px] font-bold rounded-md transition-all flex items-center gap-1"
-                        id="btn-spot-copy"
-                      >
-                        <Link className="w-2.5 h-2.5" /> {copiedLink ? 'Copied!' : 'Copy Link'}
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Real-time System Email Connection Helper */}
-            {!(settings.driveConfig?.authMethod === 'manual' ? settings.driveConfig?.manualToken : settings.driveConfig?.accessToken) ? (
-              <div className="mt-2.5 p-3.5 bg-blue-500/10 border border-blue-500/15 rounded-xl flex flex-col gap-2.5 animate-fade-in">
-                <div className="flex gap-2.5 items-start">
-                  <Cloud className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-[11px] font-extrabold text-blue-200 uppercase tracking-wide">Real-time System Email Sending</span>
-                    <p className="text-[10px] text-slate-300 leading-normal">
-                      Connect your Google Account to automatically send real emails with attachments directly to your guests instantly. No SMTP servers required!
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleConnectGoogleFromPreview}
-                  disabled={isConnectingGoogle}
-                  className="w-full py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-[11px] font-black uppercase tracking-wider rounded-lg transition-all flex items-center justify-center gap-1.5 shadow-md shadow-blue-950/20 cursor-pointer"
-                  id="btn-preview-connect-google"
-                >
-                  {isConnectingGoogle ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" /> Connecting...
-                    </>
-                  ) : (
-                    <>
-                      <Cloud className="w-3.5 h-3.5" /> Connect Google Account
-                    </>
-                  )}
-                </button>
-              </div>
-            ) : (
-              <div className="mt-2.5 px-3 py-2 bg-emerald-500/5 border border-emerald-500/15 rounded-xl flex items-center justify-between gap-2 text-[10px] text-slate-400 font-semibold animate-fade-in">
-                <span className="flex items-center gap-1.5">
-                  <Cloud className="w-3.5 h-3.5 text-emerald-400" />
-                  Real-time active: <strong className="text-emerald-300 font-extrabold">{settings.driveConfig.connectedEmail}</strong>
-                </span>
-                <span className="text-[9px] font-black uppercase text-emerald-400 tracking-wider bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/10">Google Link Ready</span>
-              </div>
-            )}
-          </div>
-
           {/* Unified Save & Scan Container */}
           <div className="p-5 bg-white/5 border border-white/10 backdrop-blur-md rounded-2xl shadow-xl flex flex-col sm:flex-row items-center gap-6">
-            {/* Direct QR Code Display with Expand-on-click UX */}
+            {/* Direct QR Code Display */}
             <div 
               onClick={() => setShowQrModal(true)}
               className="shrink-0 flex flex-col items-center bg-white p-3 rounded-2xl shadow-lg relative group cursor-pointer active:scale-95 transition-all"
@@ -1111,7 +394,6 @@ export default function FinalPreview({
                 Scan the QR code with your phone camera to download instantly, or click below to save to this kiosk.
               </p>
 
-              {/* Big, beautiful highlighted Save Photo button */}
               <button
                 onClick={handleDownload}
                 className="w-full py-3 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-black rounded-xl shadow-lg shadow-emerald-950/20 flex items-center justify-center gap-2 active:scale-95 transition-all text-xs uppercase tracking-widest cursor-pointer"
@@ -1155,18 +437,12 @@ export default function FinalPreview({
                       />
                       <button
                         type="button"
-                        onClick={() => {
-                          setIsCustomOverrideLink(false);
-                          // We don't overwrite if they want to keep what they set, but they can clear/reset
-                        }}
+                        onClick={() => setIsCustomOverrideLink(false)}
                         className="text-[10px] font-bold text-slate-400 hover:text-white px-2 py-1.5 bg-white/5 rounded-lg border border-white/5 transition-all"
                       >
                         Hide
                       </button>
                     </div>
-                    <p className="text-[8px] text-slate-400 font-semibold leading-normal">
-                      Type or paste any Google Drive, Album, or shared link. The QR code on-screen and pre-filled email links will update instantly!
-                    </p>
                   </div>
                 )}
               </div>
@@ -1180,7 +456,6 @@ export default function FinalPreview({
                 <Printer className="w-4 h-4 text-purple-400" /> Print Your Memories
               </h4>
               
-              {/* Manual Control Selector - Switch between Connection Methods */}
               <div className="flex bg-black/40 p-1 rounded-xl border border-white/5 self-start sm:self-auto">
                 <button
                   type="button"
@@ -1235,7 +510,6 @@ export default function FinalPreview({
               </button>
             </div>
 
-            {/* Quick status indicator of the selected connection */}
             <div className="mb-4 text-[10px] font-semibold text-slate-400 bg-white/5 px-3 py-2 rounded-xl flex items-center justify-between">
               <span>Selected Pathway:</span>
               <span className="font-extrabold text-blue-300">
@@ -1245,7 +519,6 @@ export default function FinalPreview({
 
             {printStatus === 'idle' || printStatus === 'printed' ? (
               <div className="flex flex-col sm:flex-row gap-4 items-center">
-                {/* Print count selectors */}
                 <div className="flex items-center gap-2 bg-black/40 p-1.5 rounded-xl border border-white/10 w-full sm:w-auto justify-between">
                   <button
                     onClick={() => setPrintCopies(Math.max(1, printCopies - 1))}
@@ -1262,7 +535,6 @@ export default function FinalPreview({
                   </button>
                 </div>
 
-                {/* Print trigger button */}
                 <button
                   onClick={handlePrint}
                   className="w-full sm:flex-1 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-black rounded-xl shadow-md flex items-center justify-center gap-2 active:scale-95 transition-all cursor-pointer text-xs uppercase tracking-widest"
@@ -1344,132 +616,6 @@ export default function FinalPreview({
             >
               Close Link
             </button>
-          </div>
-        </div>
-      )}
-
-      {/* Toast Notification for Email dispatch */}
-      {notification && (
-        <div 
-          className="fixed bottom-24 left-1/2 -translate-x-1/2 sm:bottom-6 sm:right-6 sm:left-auto sm:translate-x-0 z-50 flex flex-col gap-2.5 p-4 bg-slate-950/95 border border-white/10 backdrop-blur-xl rounded-2xl shadow-[0_10px_50px_rgba(0,0,0,0.5)] max-w-sm w-[90vw] sm:w-[380px] animate-fade-in animate-slide-up" 
-          id="email-toast-notification"
-        >
-          <div className="flex items-start gap-3">
-            <div className={`p-2 rounded-xl shrink-0 ${
-              notification.type === 'success' 
-                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
-                : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-            }`}>
-              {notification.type === 'success' ? (
-                <CheckCircle className="w-5 h-5 fill-none" />
-              ) : (
-                <AlertTriangle className="w-5 h-5 text-amber-400" />
-              )}
-            </div>
-            <div className="flex-1 min-w-0">
-              <h5 className="font-extrabold text-[11px] text-white uppercase tracking-wider">
-                {notification.type === 'success' ? 'Email Dispatched!' : 'Delivery Notice'}
-              </h5>
-              <p className="text-xs text-slate-300 mt-1 leading-normal break-words">{notification.message}</p>
-            </div>
-            <button 
-              onClick={() => setNotification(null)}
-              className="text-[10px] text-slate-400 hover:text-white transition-colors font-bold px-2 py-1 bg-white/5 hover:bg-white/10 rounded-lg shrink-0 border border-white/5"
-              id="btn-close-toast"
-            >
-              ✕
-            </button>
-          </div>
-
-          {(notification.type === 'error' || isLastEmailSimulated) && (
-            <div className="flex items-center gap-2 pt-2 border-t border-white/10">
-              <a
-                href={getMailtoUrl(customEmail || guestEmail || '')}
-                target="_blank"
-                rel="noreferrer"
-                className="flex-1 py-1.5 px-2.5 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-emerald-300 font-extrabold text-[11px] rounded-xl text-center transition-all flex items-center justify-center gap-1.5"
-                id="btn-toast-webmail"
-              >
-                <Mail className="w-3 h-3" /> Webmail Draft
-              </a>
-              <button
-                onClick={handleCopyLink}
-                className="py-1.5 px-3 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 text-blue-300 font-extrabold text-[11px] rounded-xl transition-all flex items-center justify-center gap-1"
-                id="btn-toast-copy"
-              >
-                <Link className="w-3 h-3" /> {copiedLink ? 'Copied!' : 'Copy Link'}
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {authDomainError && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-lg w-full flex flex-col gap-4 shadow-2xl relative text-left">
-            <button 
-              onClick={() => setAuthDomainError(null)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors text-base font-bold"
-            >
-              ✕
-            </button>
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-rose-500/10 border border-rose-500/20 rounded-2xl">
-                <AlertTriangle className="w-6 h-6 text-rose-400" />
-              </div>
-              <div>
-                <h3 className="text-sm font-black uppercase tracking-wider text-rose-300">Firebase Authorization Required</h3>
-                <p className="text-[10px] text-slate-400 mt-0.5">Allowlist your domain in the Firebase console</p>
-              </div>
-            </div>
-
-            <div className="p-3 bg-rose-500/5 border border-rose-500/15 rounded-xl text-xs text-slate-300 leading-relaxed">
-              Firebase Authentication blocks Google Sign-In from unauthorized domains. Because you are hosting your app on Vercel, you must manually authorize <strong className="text-rose-300">{authDomainError}</strong>.
-            </div>
-
-            <div className="flex flex-col gap-2.5">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">How to authorize (30 seconds):</span>
-              <ol className="text-xs text-slate-300 space-y-2.5 list-decimal list-inside pl-1 leading-relaxed">
-                <li>
-                  Open the <a href="https://console.firebase.google.com/" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline inline-flex items-center gap-0.5 font-bold">Firebase Console <ExternalLink className="w-3 h-3" /></a>
-                </li>
-                <li>Select your active Photobooth project.</li>
-                <li>Go to <strong className="text-white">Authentication</strong> (sidebar) &rarr; <strong className="text-white">Settings</strong> tab (top row) &rarr; <strong className="text-white">Authorized domains</strong>.</li>
-                <li>
-                  Click <strong className="text-blue-400 font-bold">Add domain</strong> and enter:
-                  <div className="mt-1.5 flex items-center justify-between gap-2 bg-black/50 border border-white/5 rounded-xl px-3 py-2 text-[11px] font-mono select-all">
-                    <span className="text-emerald-400 truncate grow">{authDomainError}</span>
-                    <button 
-                      onClick={() => {
-                        navigator.clipboard.writeText(authDomainError);
-                        alert("Domain copied to clipboard!");
-                      }}
-                      className="text-[10px] text-slate-300 hover:text-white hover:bg-white/10 transition-colors font-sans font-black uppercase bg-white/5 px-2.5 py-1 rounded-md border border-white/5"
-                    >
-                      Copy
-                    </button>
-                  </div>
-                </li>
-                <li>Click <strong className="text-white font-bold">Add</strong> to complete the setup!</li>
-              </ol>
-            </div>
-
-            <div className="flex gap-2.5 mt-2">
-              <a
-                href="https://console.firebase.google.com/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="grow py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-center text-xs font-black uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-1.5 shadow"
-              >
-                Go To Firebase Console <ExternalLink className="w-3.5 h-3.5" />
-              </a>
-              <button
-                onClick={() => setAuthDomainError(null)}
-                className="px-5 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 text-xs font-bold rounded-xl transition-all"
-              >
-                Close
-              </button>
-            </div>
           </div>
         </div>
       )}

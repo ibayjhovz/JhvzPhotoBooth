@@ -53,7 +53,7 @@ export default function AdminDashboard({
   wsSocket,
   triggerReconnection,
 }: AdminDashboardProps) {
-  const [activeTab, setActiveTab] = useState<'overview' | 'events' | 'frames' | 'email' | 'hardware' | 'gallery' | 'settings' | 'drive'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'events' | 'frames' | 'hardware' | 'gallery' | 'settings' | 'drive'>('overview');
 
   // Google Drive Integration states
   const [isConnectingDrive, setIsConnectingDrive] = useState(false);
@@ -420,14 +420,6 @@ export default function AdminDashboard({
               <Layers className="w-4 h-4 text-pink-400" /> Frames Layouts
             </button>
             <button
-              onClick={() => setActiveTab('email')}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
-                activeTab === 'email' ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg shadow-blue-500/20' : 'text-slate-300 hover:bg-white/10 hover:text-white'
-              }`}
-            >
-              <Mail className="w-4 h-4 text-emerald-400" /> Email & SMTP
-            </button>
-            <button
               onClick={() => setActiveTab('hardware')}
               className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
                 activeTab === 'hardware' ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg shadow-blue-500/20' : 'text-slate-300 hover:bg-white/10 hover:text-white'
@@ -774,7 +766,7 @@ export default function AdminDashboard({
             <FrameManager frames={frames} onSaveFrames={onSaveFrames} />
           )}
 
-          {activeTab === 'email' && (
+          {false && (
             <div className="flex flex-col gap-6" id="email-pane">
               {/* Delivery Strategy Selector */}
               <div className="p-5 bg-white/5 border border-white/10 backdrop-blur-md rounded-2xl flex flex-col gap-4">

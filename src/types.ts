@@ -108,7 +108,6 @@ export interface AppSettings {
 export type AppView =
   | 'welcome'
   | 'frame-select'
-  | 'email-capture'
   | 'capture'
   | 'preview'
   | 'thank-you'

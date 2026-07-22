@@ -12,7 +12,6 @@ import { collection, doc, setDoc, deleteDoc, onSnapshot, getDocFromServer } from
 // Subcomponents imports
 import WelcomeScreen from './components/WelcomeScreen';
 import FrameSelection from './components/FrameSelection';
-import EmailCapture from './components/EmailCapture';
 import CaptureWorkflow from './components/CaptureWorkflow';
 import PhotostripCanvas from './components/PhotostripCanvas';
 import FinalPreview from './components/FinalPreview';
@@ -516,12 +515,6 @@ export default function App() {
 
   const handleFrameSelected = (frame: EventFrame) => {
     setSelectedFrameId(frame.id);
-    setView('email-capture');
-  };
-
-  const handleEmailConfirmed = (email: string, name?: string) => {
-    setGuestEmail(email);
-    setGuestName(name || '');
     setView('capture');
   };
 
@@ -710,14 +703,6 @@ export default function App() {
         />
       )}
 
-      {view === 'email-capture' && (
-        <EmailCapture
-          onConfirm={handleEmailConfirmed}
-          onBack={() => setView('frame-select')}
-          privacyPolicy={settings.privacyPolicy}
-        />
-      )}
-
       {view === 'capture' && currentSelectedFrame && (
         <CaptureWorkflow
           activeEvent={activeEvent}
@@ -743,7 +728,6 @@ export default function App() {
               wsSocket={wsSocket}
               saveSession={handleSaveSessionRecord}
               settings={settings}
-              emailConfig={emailConfig}
               onSaveSettings={handleSaveSettings}
             />
           ) : (
