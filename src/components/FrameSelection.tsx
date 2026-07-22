@@ -179,7 +179,10 @@ export default function FrameSelection({
                     if (isLandscape) sizeClasses = 'w-[240px] h-[160px]';
 
                     return (
-                      <div className={`relative ${sizeClasses} bg-slate-950 border border-white/10 rounded-xl overflow-hidden shadow-2xl group-hover:scale-105 transition-transform duration-300`}>
+                      <div 
+                        className={`relative ${sizeClasses} border border-white/10 rounded-xl overflow-hidden shadow-2xl group-hover:scale-105 transition-transform duration-300`}
+                        style={{ backgroundColor: frame.backgroundColor || '#020617' }}
+                      >
                         {/* 1. Behind: Beautiful photo templates/placeholder images */}
                         {frame.slots.map((slot) => {
                           const sample = getSamplePhotoForSlot(slot.id, frame.id);
@@ -240,6 +243,37 @@ export default function FrameSelection({
                             </div>
                           ))
                         )}
+
+                        {/* 3. Overlay Photos & Graphics */}
+                        {frame.overlays?.map((overlay) => (
+                          <div
+                            key={overlay.id}
+                            className="absolute pointer-events-none z-30 flex items-center justify-center"
+                            style={{
+                              left: `${overlay.x}%`,
+                              top: `${overlay.y}%`,
+                              width: `${overlay.width}%`,
+                              height: `${overlay.height}%`,
+                              transform: overlay.rotation ? `rotate(${overlay.rotation}deg)` : undefined,
+                              opacity: overlay.opacity ?? 1,
+                            }}
+                          >
+                            {overlay.type === 'text' && overlay.text ? (
+                              <span
+                                style={{
+                                  color: overlay.textColor || '#ffffff',
+                                  fontSize: '10px',
+                                  fontWeight: 'bold',
+                                }}
+                                className="truncate"
+                              >
+                                {overlay.text}
+                              </span>
+                            ) : overlay.imageUrl ? (
+                              <img src={overlay.imageUrl} alt="" className="w-full h-full object-contain" />
+                            ) : null}
+                          </div>
+                        ))}
                       </div>
                     );
                   })()}

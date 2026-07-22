@@ -43,8 +43,12 @@ export default function PhotostripCanvas({
         const w = canvas.width;
         const h = canvas.height;
 
-        // Clear canvas
+        // Clear canvas and fill optional canvas background color
         ctx.clearRect(0, 0, w, h);
+        if (frame.backgroundColor) {
+          ctx.fillStyle = frame.backgroundColor;
+          ctx.fillRect(0, 0, w, h);
+        }
 
         // Helper to load image promise
         const loadImage = (src: string): Promise<HTMLImageElement> => {
@@ -122,6 +126,47 @@ export default function PhotostripCanvas({
             ctx.lineWidth = 20;
             ctx.strokeStyle = '#FFFFFF';
             ctx.strokeRect(10, 10, w - 20, h - 20);
+          }
+        }
+
+        // Draw custom overlay photos, stickers, and text graphics
+        if (frame.overlays && frame.overlays.length > 0) {
+          const sortedOverlays = [...frame.overlays].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0));
+          for (const item of sortedOverlays) {
+            ctx.save();
+            const ox = (item.x / 100) * w;
+            const oy = (item.y / 100) * h;
+            const ow = (item.width / 100) * w;
+            const oh = (item.height / 100) * h;
+
+            // Center coordinates for rotation
+            const cx = ox + ow / 2;
+            const cy = oy + oh / 2;
+
+            ctx.translate(cx, cy);
+            if (item.rotation) {
+              ctx.rotate((item.rotation * Math.PI) / 180);
+            }
+            if (item.opacity !== undefined) {
+              ctx.globalAlpha = item.opacity;
+            }
+
+            if (item.type === 'text' && item.text) {
+              const fontSize = Math.max(14, Math.round(((item.fontSize || 24) / 500) * w));
+              ctx.font = `bold ${fontSize}px sans-serif`;
+              ctx.fillStyle = item.textColor || '#FFFFFF';
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillText(item.text, 0, 0);
+            } else if (item.imageUrl) {
+              try {
+                const overlayImg = await loadImage(item.imageUrl);
+                ctx.drawImage(overlayImg, -ow / 2, -oh / 2, ow, oh);
+              } catch (imgErr) {
+                console.warn('Failed to draw overlay image:', item.name, imgErr);
+              }
+            }
+            ctx.restore();
           }
         }
 

@@ -7,12 +7,31 @@ export interface PhotoSlot {
   angle?: number;
 }
 
+export interface OverlayItem {
+  id: string;
+  name?: string;
+  imageUrl: string; // Base64 data URL, SVG, or preset image path
+  x: number; // percentage (0 - 100)
+  y: number; // percentage (0 - 100)
+  width: number; // percentage (0 - 100)
+  height: number; // percentage (0 - 100)
+  rotation?: number; // degrees (-180 to 180)
+  opacity?: number; // 0.0 to 1.0
+  zIndex?: number;
+  type?: 'image' | 'sticker' | 'text' | 'logo' | 'border';
+  text?: string;
+  textColor?: string;
+  fontSize?: number;
+}
+
 export interface EventFrame {
   id: string;
   name: string;
   category: string;
   imageUrl: string; // Background frame overlay with transparent regions
+  backgroundColor?: string; // Background fill hex color (e.g. #ffffff, #000000, #fdf4ff)
   slots: PhotoSlot[];
+  overlays?: OverlayItem[]; // Custom graphic overlay photos, stickers, watermarks, text
   active: boolean;
   isCustom?: boolean;
 }
