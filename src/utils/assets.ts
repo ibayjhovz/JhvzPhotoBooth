@@ -1,5 +1,37 @@
 import { EventFrame, PhotoboothEvent, EmailConfig, PrinterConfig, AppSettings } from '../types';
 
+export function getStyleAndOrientationForFrame(frame: Partial<EventFrame>): {
+  style: 'wedding' | 'birthday' | 'graduation' | 'corporate' | 'neon' | 'film' | 'retro' | 'vintage';
+  orientation: 'portrait' | 'landscape' | 'square';
+} {
+  let style: 'wedding' | 'birthday' | 'graduation' | 'corporate' | 'neon' | 'film' | 'retro' | 'vintage' = 'wedding';
+  let orientation: 'portrait' | 'landscape' | 'square' = 'portrait';
+
+  const str = `${frame.id || ''} ${frame.category || ''} ${frame.name || ''}`.toLowerCase();
+
+  if (str.includes('birthday')) style = 'birthday';
+  else if (str.includes('graduation')) style = 'graduation';
+  else if (str.includes('corporate')) style = 'corporate';
+  else if (str.includes('neon')) style = 'neon';
+  else if (str.includes('film')) style = 'film';
+  else if (str.includes('retro') || str.includes('polaroid')) style = 'retro';
+  else if (str.includes('vintage')) style = 'vintage';
+  else if (str.includes('wedding')) style = 'wedding';
+
+  const firstSlot = frame.slots && frame.slots[0];
+  if (firstSlot) {
+    if (firstSlot.width < 90 && firstSlot.height < 25) orientation = 'portrait';
+    else if (firstSlot.width < 50 && firstSlot.height < 50) orientation = 'landscape';
+    else orientation = 'square';
+  } else {
+    if (str.includes('portrait')) orientation = 'portrait';
+    else if (str.includes('landscape')) orientation = 'landscape';
+    else if (str.includes('square')) orientation = 'square';
+  }
+
+  return { style, orientation };
+}
+
 // Helper to generate a styled transparent PNG frame overlay as a base64 Data URL
 export function generateMockFrameOverlay(
   style: 'wedding' | 'birthday' | 'graduation' | 'corporate' | 'neon' | 'film' | 'retro' | 'vintage',

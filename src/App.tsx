@@ -3,7 +3,7 @@ import {
   EventFrame, PhotoboothEvent, CompanionStatus, EmailConfig, PrinterConfig, AppSettings, Session, AppView
 } from './types';
 import {
-  DEFAULT_FRAMES, DEFAULT_EVENTS, DEFAULT_EMAIL_CONFIG, DEFAULT_PRINTER_CONFIG, DEFAULT_SETTINGS, generateMockFrameOverlay
+  DEFAULT_FRAMES, DEFAULT_EVENTS, DEFAULT_EMAIL_CONFIG, DEFAULT_PRINTER_CONFIG, DEFAULT_SETTINGS, generateMockFrameOverlay, getStyleAndOrientationForFrame
 } from './utils/assets';
 import { initAuth, db } from './utils/firebaseAuth';
 import { getOrCreateFolder, uploadPhotostripToDrive } from './utils/googleDrive';
@@ -170,22 +170,7 @@ export default function App() {
       if (dbFrames.length > 0) {
         const hydratedDbFrames = dbFrames.map((frame) => {
           if (!frame.imageUrl || !frame.imageUrl.startsWith('data:image')) {
-            let style: 'wedding' | 'birthday' | 'graduation' | 'corporate' | 'neon' | 'film' | 'retro' | 'vintage' = 'wedding';
-            let orientation: 'portrait' | 'landscape' | 'square' = 'portrait';
-
-            if (frame.id.includes('wedding')) style = 'wedding';
-            else if (frame.id.includes('birthday')) style = 'birthday';
-            else if (frame.id.includes('graduation')) style = 'graduation';
-            else if (frame.id.includes('corporate')) style = 'corporate';
-            else if (frame.id.includes('neon')) style = 'neon';
-            else if (frame.id.includes('film')) style = 'film';
-            else if (frame.id.includes('retro') || frame.id.includes('polaroid')) style = 'retro';
-            else if (frame.id.includes('vintage')) style = 'vintage';
-
-            if (frame.id.includes('portrait')) orientation = 'portrait';
-            else if (frame.id.includes('landscape')) orientation = 'landscape';
-            else if (frame.id.includes('square')) orientation = 'square';
-
+            const { style, orientation } = getStyleAndOrientationForFrame(frame);
             return {
               ...frame,
               imageUrl: generateMockFrameOverlay(style, orientation, frame.slots),
@@ -199,22 +184,7 @@ export default function App() {
         const missingFrames = DEFAULT_FRAMES.filter((df) => !dbFrames.some((dbf) => dbf.id === df.id));
         if (missingFrames.length > 0) {
           missingFrames.forEach((frame) => {
-            let style: 'wedding' | 'birthday' | 'graduation' | 'corporate' | 'neon' | 'film' | 'retro' | 'vintage' = 'wedding';
-            let orientation: 'portrait' | 'landscape' | 'square' = 'portrait';
-
-            if (frame.id.includes('wedding')) style = 'wedding';
-            else if (frame.id.includes('birthday')) style = 'birthday';
-            else if (frame.id.includes('graduation')) style = 'graduation';
-            else if (frame.id.includes('corporate')) style = 'corporate';
-            else if (frame.id.includes('neon')) style = 'neon';
-            else if (frame.id.includes('film')) style = 'film';
-            else if (frame.id.includes('retro') || frame.id.includes('polaroid')) style = 'retro';
-            else if (frame.id.includes('vintage')) style = 'vintage';
-
-            if (frame.id.includes('portrait')) orientation = 'portrait';
-            else if (frame.id.includes('landscape')) orientation = 'landscape';
-            else if (frame.id.includes('square')) orientation = 'square';
-
+            const { style, orientation } = getStyleAndOrientationForFrame(frame);
             const overlay = generateMockFrameOverlay(style, orientation, frame.slots);
             const hydrated = {
               ...frame,
@@ -228,22 +198,7 @@ export default function App() {
       } else {
         // Hydrate default frames if Firestore is empty
         const hydrated = DEFAULT_FRAMES.map((frame) => {
-          let style: 'wedding' | 'birthday' | 'graduation' | 'corporate' | 'neon' | 'film' | 'retro' | 'vintage' = 'wedding';
-          let orientation: 'portrait' | 'landscape' | 'square' = 'portrait';
-
-          if (frame.id.includes('wedding')) style = 'wedding';
-          else if (frame.id.includes('birthday')) style = 'birthday';
-          else if (frame.id.includes('graduation')) style = 'graduation';
-          else if (frame.id.includes('corporate')) style = 'corporate';
-          else if (frame.id.includes('neon')) style = 'neon';
-          else if (frame.id.includes('film')) style = 'film';
-          else if (frame.id.includes('retro') || frame.id.includes('polaroid')) style = 'retro';
-          else if (frame.id.includes('vintage')) style = 'vintage';
-
-          if (frame.id.includes('portrait')) orientation = 'portrait';
-          else if (frame.id.includes('landscape')) orientation = 'landscape';
-          else if (frame.id.includes('square')) orientation = 'square';
-
+          const { style, orientation } = getStyleAndOrientationForFrame(frame);
           const overlay = generateMockFrameOverlay(style, orientation, frame.slots);
           return {
             ...frame,

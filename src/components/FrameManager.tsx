@@ -21,7 +21,7 @@ import {
   CheckCircle,
   FolderPlus,
 } from 'lucide-react';
-import { generateMockFrameOverlay } from '../utils/assets';
+import { generateMockFrameOverlay, getStyleAndOrientationForFrame } from '../utils/assets';
 import { PRESET_OVERLAY_OPTIONS, CANVAS_BG_PRESETS } from '../utils/presetOverlays';
 
 const SAMPLE_PHOTOS = [
@@ -157,9 +157,12 @@ export default function FrameManager({ frames, onSaveFrames }: FrameManagerProps
             { id: 4, x: 53, y: 50, width: 42, height: 40 },
           ];
 
+    const { style } = getStyleAndOrientationForFrame({ category: newFrameCategory, name: newFrameName });
+
     const mockOverlay = generateMockFrameOverlay(
-      newFrameCategory.toLowerCase() as any,
-      newFrameOrientation
+      style,
+      newFrameOrientation,
+      defaultSlots
     );
 
     const newFrame: EventFrame = {
@@ -539,7 +542,18 @@ export default function FrameManager({ frames, onSaveFrames }: FrameManagerProps
 
   const handleSaveEditorChanges = () => {
     if (!editingFrame) return;
-    const updated = frames.map((f) => (f.id === editingFrame.id ? editingFrame : f));
+
+    const { style, orientation } = getStyleAndOrientationForFrame(editingFrame);
+    
+    // Always generate updated base overlay image with exact cutouts for current editingFrame.slots
+    const updatedOverlayImage = generateMockFrameOverlay(style, orientation, editingFrame.slots);
+
+    const frameToSave: EventFrame = {
+      ...editingFrame,
+      imageUrl: updatedOverlayImage,
+    };
+
+    const updated = frames.map((f) => (f.id === frameToSave.id ? frameToSave : f));
     onSaveFrames(updated);
     setShowEditor(false);
     setEditingFrame(null);
@@ -642,14 +656,34 @@ export default function FrameManager({ frames, onSaveFrames }: FrameManagerProps
                   style={{ backgroundColor: editingFrame.backgroundColor || '#FFFFFF' }}
                   id="visual-editor-stage"
                 >
-                  {/* Layer 1: Background Base Frame Overlay Image */}
+                  {/* Layer 1: Background Base Frame Overlay Image (Masked to cut out photo slots) */}
                   {editingFrame.imageUrl && (
-                    <img
-                      src={editingFrame.imageUrl}
-                      alt="Base frame background"
-                      className="absolute inset-0 w-full h-full object-fill pointer-events-none z-10"
-                      referrerPolicy="no-referrer"
-                    />
+                    <svg className="absolute inset-0 w-full h-full pointer-events-none z-10" viewBox="0 0 100 100" preserveAspectRatio="none">
+                      <defs>
+                        <mask id={`stage-frame-mask-${editingFrame.id}`}>
+                          <rect x="0" y="0" width="100" height="100" fill="white" />
+                          {editingFrame.slots.map((slot) => (
+                            <rect
+                              key={slot.id}
+                              x={slot.x}
+                              y={slot.y}
+                              width={slot.width}
+                              height={slot.height}
+                              fill="black"
+                            />
+                          ))}
+                        </mask>
+                      </defs>
+                      <image
+                        href={editingFrame.imageUrl}
+                        x="0"
+                        y="0"
+                        width="100"
+                        height="100"
+                        preserveAspectRatio="none"
+                        mask={`url(#stage-frame-mask-${editingFrame.id})`}
+                      />
+                    </svg>
                   )}
 
                   {/* Layer 2: Draggable Photo Slots / Photo Frames */}
