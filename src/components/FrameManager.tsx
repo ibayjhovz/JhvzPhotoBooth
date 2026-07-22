@@ -24,6 +24,13 @@ import {
 import { generateMockFrameOverlay } from '../utils/assets';
 import { PRESET_OVERLAY_OPTIONS, CANVAS_BG_PRESETS } from '../utils/presetOverlays';
 
+const SAMPLE_PHOTOS = [
+  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=500&auto=format&fit=crop',
+  'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=500&auto=format&fit=crop',
+  'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=500&auto=format&fit=crop',
+  'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=500&auto=format&fit=crop',
+];
+
 interface FrameManagerProps {
   frames: EventFrame[];
   onSaveFrames: (updated: EventFrame[]) => void;
@@ -32,7 +39,8 @@ interface FrameManagerProps {
 export default function FrameManager({ frames, onSaveFrames }: FrameManagerProps) {
   const [editingFrame, setEditingFrame] = useState<EventFrame | null>(null);
   const [showEditor, setShowEditor] = useState(false);
-  const [editorTab, setEditorTab] = useState<'slots' | 'overlays' | 'canvas'>('overlays');
+  const [editorTab, setEditorTab] = useState<'slots' | 'overlays' | 'canvas'>('slots');
+  const [showSamplePhotos, setShowSamplePhotos] = useState(true);
 
   // Selection on Stage
   const [selectedType, setSelectedType] = useState<'slot' | 'overlay'>('slot');
@@ -320,16 +328,99 @@ export default function FrameManager({ frames, onSaveFrames }: FrameManagerProps
     setSelectedOverlayId(dup.id);
   };
 
+  // Apply Photo Slot Presets
+  const handleApplySlotPreset = (preset: 'strip-3' | 'strip-4' | 'grid-2x2' | 'single-hero' | 'polaroid-2' | 'polaroid-3') => {
+    if (!editingFrame) return;
+    let newSlots: PhotoSlot[] = [];
+    if (preset === 'strip-3') {
+      newSlots = [
+        { id: 1, x: 10, y: 6, width: 80, height: 26 },
+        { id: 2, x: 10, y: 36, width: 80, height: 26 },
+        { id: 3, x: 10, y: 66, width: 80, height: 26 },
+      ];
+    } else if (preset === 'strip-4') {
+      newSlots = [
+        { id: 1, x: 10, y: 4, width: 80, height: 20 },
+        { id: 2, x: 10, y: 27, width: 80, height: 20 },
+        { id: 3, x: 10, y: 50, width: 80, height: 20 },
+        { id: 4, x: 10, y: 73, width: 80, height: 20 },
+      ];
+    } else if (preset === 'grid-2x2') {
+      newSlots = [
+        { id: 1, x: 6, y: 6, width: 42, height: 42 },
+        { id: 2, x: 52, y: 6, width: 42, height: 42 },
+        { id: 3, x: 6, y: 52, width: 42, height: 42 },
+        { id: 4, x: 52, y: 52, width: 42, height: 42 },
+      ];
+    } else if (preset === 'single-hero') {
+      newSlots = [
+        { id: 1, x: 8, y: 8, width: 84, height: 75 },
+      ];
+    } else if (preset === 'polaroid-2') {
+      newSlots = [
+        { id: 1, x: 10, y: 8, width: 80, height: 38 },
+        { id: 2, x: 10, y: 52, width: 80, height: 38 },
+      ];
+    } else if (preset === 'polaroid-3') {
+      newSlots = [
+        { id: 1, x: 12, y: 5, width: 76, height: 25 },
+        { id: 2, x: 12, y: 34, width: 76, height: 25 },
+        { id: 3, x: 12, y: 63, width: 76, height: 25 },
+      ];
+    }
+    setEditingFrame({ ...editingFrame, slots: newSlots });
+    setSelectedSlotId(1);
+    setSelectedType('slot');
+  };
+
+  const handleCenterSlotHorizontally = () => {
+    if (!editingFrame || selectedSlotId === null) return;
+    const updated = editingFrame.slots.map((s) => {
+      if (s.id !== selectedSlotId) return s;
+      const newX = Math.round(((100 - s.width) / 2) * 10) / 10;
+      return { ...s, x: newX };
+    });
+    setEditingFrame({ ...editingFrame, slots: updated });
+  };
+
+  const handleCenterSlotVertically = () => {
+    if (!editingFrame || selectedSlotId === null) return;
+    const updated = editingFrame.slots.map((s) => {
+      if (s.id !== selectedSlotId) return s;
+      const newY = Math.round(((100 - s.height) / 2) * 10) / 10;
+      return { ...s, y: newY };
+    });
+    setEditingFrame({ ...editingFrame, slots: updated });
+  };
+
+  const handleDistributeSlotsVertically = () => {
+    if (!editingFrame || editingFrame.slots.length < 2) return;
+    const count = editingFrame.slots.length;
+    const sorted = [...editingFrame.slots].sort((a, b) => a.y - b.y);
+    const totalHeight = sorted.reduce((sum, s) => sum + s.height, 0);
+    const availableSpace = Math.max(0, 100 - totalHeight);
+    const gap = availableSpace / (count + 1);
+
+    let currentY = gap;
+    const updated = sorted.map((slot) => {
+      const newY = Math.round(currentY * 10) / 10;
+      currentY += slot.height + gap;
+      return { ...slot, y: newY };
+    });
+
+    setEditingFrame({ ...editingFrame, slots: updated });
+  };
+
   // Add Photo Slot
   const handleAddSlot = () => {
     if (!editingFrame) return;
     const nextId = Math.max(0, ...editingFrame.slots.map((s) => s.id)) + 1;
     const newSlot: PhotoSlot = {
       id: nextId,
-      x: 15,
+      x: 10,
       y: Math.min(75, 10 + (nextId - 1) * 20),
-      width: 70,
-      height: 18,
+      width: 80,
+      height: 20,
     };
 
     setEditingFrame({
@@ -512,9 +603,27 @@ export default function FrameManager({ frames, onSaveFrames }: FrameManagerProps
               {/* LEFT: Visual Interactive Canvas Stage */}
               <div className="flex-1 bg-slate-950/60 p-6 flex flex-col items-center justify-center overflow-auto relative border-b md:border-b-0 md:border-r border-slate-800">
                 
-                {/* Visual Stage Banner / Quick Tip */}
-                <div className="mb-4 flex items-center gap-2 px-3 py-1.5 bg-indigo-500/10 border border-indigo-500/20 rounded-full text-indigo-300 text-[11px] font-semibold">
-                  <Move className="w-3.5 h-3.5 text-indigo-400" /> Click and drag slots or overlay graphics on stage to arrange
+                {/* Visual Stage Controls & Banner */}
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-2.5 w-full max-w-lg px-1">
+                  <div className="flex items-center gap-1.5 px-3 py-1 bg-indigo-500/10 border border-indigo-500/20 rounded-full text-indigo-300 text-[11px] font-semibold">
+                    <Move className="w-3.5 h-3.5 text-indigo-400 shrink-0" /> Click & drag photo frames or graphics to position
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowSamplePhotos(!showSamplePhotos)}
+                      className={`px-3 py-1 rounded-full text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
+                        showSamplePhotos
+                          ? 'bg-purple-600/20 border-purple-500/40 text-purple-300'
+                          : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200'
+                      }`}
+                      title="Toggle realistic sample photos inside photo frames"
+                    >
+                      <ImageIcon className="w-3.5 h-3.5" />
+                      Sample Photos: <span className="uppercase">{showSamplePhotos ? 'ON' : 'OFF'}</span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* Stage Container */}
@@ -543,15 +652,15 @@ export default function FrameManager({ frames, onSaveFrames }: FrameManagerProps
                     />
                   )}
 
-                  {/* Layer 2: Draggable Photo Slots */}
-                  {editingFrame.slots.map((slot) => {
+                  {/* Layer 2: Draggable Photo Slots / Photo Frames */}
+                  {editingFrame.slots.map((slot, index) => {
                     const isSelected = selectedType === 'slot' && selectedSlotId === slot.id;
 
                     return (
                       <div
                         key={slot.id}
                         onMouseDown={(e) => handleStageMouseDown(e, 'slot', slot.id)}
-                        className={`absolute rounded-xl border-2 cursor-move flex flex-col items-center justify-center p-1 transition-all z-20 ${
+                        className={`absolute rounded-xl border-2 cursor-move flex flex-col items-center justify-center p-1 transition-all z-20 overflow-hidden ${
                           isSelected
                             ? 'border-indigo-400 bg-indigo-600/30 ring-4 ring-indigo-500/30 shadow-xl'
                             : 'border-slate-400/80 bg-slate-900/60 hover:border-white hover:bg-slate-900/80'
@@ -563,12 +672,21 @@ export default function FrameManager({ frames, onSaveFrames }: FrameManagerProps
                           height: `${slot.height}%`,
                         }}
                       >
-                        <span className="text-[11px] font-black tracking-wider text-white drop-shadow flex items-center gap-1 select-none font-sans">
-                          <Move className="w-3 h-3 text-indigo-300" /> Photo #{slot.id}
-                        </span>
-                        <span className="text-[9px] text-slate-300 font-mono select-none">
-                          {slot.width}% × {slot.height}%
-                        </span>
+                        {showSamplePhotos ? (
+                          <img
+                            src={SAMPLE_PHOTOS[index % SAMPLE_PHOTOS.length]}
+                            alt=""
+                            className="absolute inset-0 w-full h-full object-cover opacity-80 pointer-events-none select-none"
+                          />
+                        ) : null}
+                        <div className="relative z-10 flex flex-col items-center justify-center pointer-events-none">
+                          <span className="text-[11px] font-black tracking-wider text-white drop-shadow-md flex items-center gap-1 select-none font-sans bg-black/60 px-2 py-0.5 rounded-md">
+                            <Move className="w-3 h-3 text-indigo-300" /> Photo #{slot.id} Frame
+                          </span>
+                          <span className="text-[9px] text-slate-200 font-mono select-none drop-shadow bg-black/40 px-1 rounded mt-0.5">
+                            {slot.width}% × {slot.height}%
+                          </span>
+                        </div>
                       </div>
                     );
                   })}
@@ -943,20 +1061,105 @@ export default function FrameManager({ frames, onSaveFrames }: FrameManagerProps
                     </div>
                   )}
 
-                  {/* TAB 2: PHOTO SLOTS LAYOUT */}
+                  {/* TAB 2: PHOTO SLOTS (PHOTO FRAMES) LAYOUT */}
                   {editorTab === 'slots' && (
                     <div className="flex flex-col gap-5">
                       <div className="flex items-center justify-between">
-                        <h4 className="text-xs font-black uppercase text-indigo-400 tracking-wider">
-                          Photo Slots ({editingFrame.slots.length})
-                        </h4>
+                        <div>
+                          <h4 className="text-xs font-black uppercase text-indigo-400 tracking-wider">
+                            Photo Frames & Slots ({editingFrame.slots.length})
+                          </h4>
+                          <p className="text-[10px] text-slate-400 mt-0.5">Define where captured guest photos are placed on your custom frame</p>
+                        </div>
                         <button
                           type="button"
                           onClick={handleAddSlot}
                           className="py-1.5 px-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl flex items-center gap-1 transition-all cursor-pointer shadow"
                         >
-                          <Plus className="w-3.5 h-3.5" /> Add Photo Slot
+                          <Plus className="w-3.5 h-3.5" /> Add Frame Slot
                         </button>
+                      </div>
+
+                      {/* Quick Layout Presets */}
+                      <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800 flex flex-col gap-2">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                          ⚡ Quick Photo Frame Presets
+                        </span>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleApplySlotPreset('strip-4')}
+                            className="p-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl text-[10px] font-bold text-slate-200 hover:text-white transition-all text-center cursor-pointer"
+                          >
+                            4-Photo Strip
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleApplySlotPreset('strip-3')}
+                            className="p-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl text-[10px] font-bold text-slate-200 hover:text-white transition-all text-center cursor-pointer"
+                          >
+                            3-Photo Strip
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleApplySlotPreset('grid-2x2')}
+                            className="p-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl text-[10px] font-bold text-slate-200 hover:text-white transition-all text-center cursor-pointer"
+                          >
+                            2x2 Grid
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleApplySlotPreset('single-hero')}
+                            className="p-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl text-[10px] font-bold text-slate-200 hover:text-white transition-all text-center cursor-pointer"
+                          >
+                            1 Big Frame
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleApplySlotPreset('polaroid-2')}
+                            className="p-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl text-[10px] font-bold text-slate-200 hover:text-white transition-all text-center cursor-pointer"
+                          >
+                            2 Stacked
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleApplySlotPreset('polaroid-3')}
+                            className="p-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl text-[10px] font-bold text-slate-200 hover:text-white transition-all text-center cursor-pointer"
+                          >
+                            Polaroid Style
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Align & Auto-Space Tools */}
+                      <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800 flex items-center justify-between gap-2">
+                        <span className="text-[10px] font-black uppercase text-indigo-300">Align:</span>
+                        <div className="flex items-center gap-1.5 flex-1 justify-end">
+                          <button
+                            type="button"
+                            onClick={handleCenterSlotHorizontally}
+                            className="px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-lg text-[10px] font-bold text-slate-300 hover:text-white transition-all cursor-pointer"
+                            title="Center selected photo frame horizontally"
+                          >
+                            Center X
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleCenterSlotVertically}
+                            className="px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-lg text-[10px] font-bold text-slate-300 hover:text-white transition-all cursor-pointer"
+                            title="Center selected photo frame vertically"
+                          >
+                            Center Y
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleDistributeSlotsVertically}
+                            className="px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-lg text-[10px] font-bold text-slate-300 hover:text-white transition-all cursor-pointer"
+                            title="Space photo frames evenly from top to bottom"
+                          >
+                            Space Evenly
+                          </button>
+                        </div>
                       </div>
 
                       {/* Slot selector chips */}
@@ -976,7 +1179,7 @@ export default function FrameManager({ frames, onSaveFrames }: FrameManagerProps
                                 : 'bg-slate-950 text-slate-400 hover:bg-slate-850'
                             }`}
                           >
-                            Slot #{s.id}
+                            Frame #{s.id}
                           </button>
                         ))}
                       </div>
