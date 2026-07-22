@@ -971,15 +971,66 @@ export default function CaptureWorkflow({
               })}
             </div>
 
-            {/* Frame Template Design Overlay */}
+            {/* Frame Template Design Overlay (Masked to leave photo slots transparent so frame artwork never covers photos) */}
             {selectedFrame.imageUrl && (
-              <img
-                src={selectedFrame.imageUrl}
-                alt="Template design frame overlay"
-                className="absolute inset-0 w-full h-full object-fill pointer-events-none z-10"
-                referrerPolicy="no-referrer"
-              />
+              <svg className="absolute inset-0 w-full h-full pointer-events-none z-10" viewBox="0 0 100 100" preserveAspectRatio="none">
+                <defs>
+                  <mask id={`live-frame-mask-${selectedFrame.id}`}>
+                    <rect x="0" y="0" width="100" height="100" fill="white" />
+                    {selectedFrame.slots.map((slot) => (
+                      <rect
+                        key={slot.id}
+                        x={slot.x}
+                        y={slot.y}
+                        width={slot.width}
+                        height={slot.height}
+                        fill="black"
+                      />
+                    ))}
+                  </mask>
+                </defs>
+                <image
+                  href={selectedFrame.imageUrl}
+                  x="0"
+                  y="0"
+                  width="100"
+                  height="100"
+                  preserveAspectRatio="none"
+                  mask={`url(#live-frame-mask-${selectedFrame.id})`}
+                />
+              </svg>
             )}
+
+            {/* Custom Graphic Overlays (Stickers, Text, Logos) */}
+            {selectedFrame.overlays?.map((overlay) => (
+              <div
+                key={overlay.id}
+                className="absolute pointer-events-none z-20 flex items-center justify-center"
+                style={{
+                  left: `${overlay.x}%`,
+                  top: `${overlay.y}%`,
+                  width: `${overlay.width}%`,
+                  height: `${overlay.height}%`,
+                  transform: overlay.rotation ? `rotate(${overlay.rotation}deg)` : undefined,
+                  opacity: overlay.opacity ?? 1,
+                }}
+              >
+                {overlay.type === 'text' && overlay.text ? (
+                  <span
+                    style={{
+                      color: overlay.textColor || '#ffffff',
+                      fontSize: `${Math.max(9, (overlay.fontSize || 20) / 2.5)}px`,
+                      fontWeight: 'bold',
+                    }}
+                    className="truncate font-display drop-shadow select-none whitespace-nowrap"
+                  >
+                    {overlay.text}
+                  </span>
+                ) : overlay.imageUrl ? (
+                  <img src={overlay.imageUrl} alt="" className="w-full h-full object-contain drop-shadow" />
+                ) : null}
+              </div>
+            ))}
           </div>
         </div>
 

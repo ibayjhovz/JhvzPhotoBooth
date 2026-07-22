@@ -218,14 +218,34 @@ export default function FrameSelection({
                           );
                         })}
 
-                        {/* 2. On Top: Transparent Overlay (If available) */}
+                        {/* 2. On Top: Transparent Overlay (Masked to cut out slot areas) */}
                         {frame.imageUrl ? (
-                          <img
-                            src={frame.imageUrl}
-                            alt={frame.name}
-                            className="absolute inset-0 w-full h-full object-fill z-20 pointer-events-none"
-                            referrerPolicy="no-referrer"
-                          />
+                          <svg className="absolute inset-0 w-full h-full pointer-events-none z-20" viewBox="0 0 100 100" preserveAspectRatio="none">
+                            <defs>
+                              <mask id={`sel-frame-mask-${frame.id}`}>
+                                <rect x="0" y="0" width="100" height="100" fill="white" />
+                                {frame.slots.map((slot) => (
+                                  <rect
+                                    key={slot.id}
+                                    x={slot.x}
+                                    y={slot.y}
+                                    width={slot.width}
+                                    height={slot.height}
+                                    fill="black"
+                                  />
+                                ))}
+                              </mask>
+                            </defs>
+                            <image
+                              href={frame.imageUrl}
+                              x="0"
+                              y="0"
+                              width="100"
+                              height="100"
+                              preserveAspectRatio="none"
+                              mask={`url(#sel-frame-mask-${frame.id})`}
+                            />
+                          </svg>
                         ) : (
                           /* Otherwise overlay slot boundaries to look like a clean technical blueprint layout */
                           frame.slots.map((slot) => (

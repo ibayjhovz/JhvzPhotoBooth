@@ -115,11 +115,34 @@ export default function PhotostripCanvas({
           setStatus('Overlaying transparent decorative frame...');
         }
 
-        // Load and draw the frame overlay on top
+        // Load and draw the frame overlay on top, with slot regions cut out so photos are never obscured
         if (frame.imageUrl) {
           try {
             const frameOverlayImg = await loadImage(frame.imageUrl);
-            ctx.drawImage(frameOverlayImg, 0, 0, w, h);
+            
+            // Use offscreen canvas to cut out slot regions from overlay
+            const offCanvas = document.createElement('canvas');
+            offCanvas.width = w;
+            offCanvas.height = h;
+            const offCtx = offCanvas.getContext('2d');
+            
+            if (offCtx) {
+              offCtx.drawImage(frameOverlayImg, 0, 0, w, h);
+              
+              // Cut out photo slot areas from overlay
+              offCtx.globalCompositeOperation = 'destination-out';
+              for (const slot of frame.slots) {
+                const px = (slot.x / 100) * w;
+                const py = (slot.y / 100) * h;
+                const pw = (slot.width / 100) * w;
+                const ph = (slot.height / 100) * h;
+                offCtx.fillRect(px, py, pw, ph);
+              }
+              offCtx.globalCompositeOperation = 'source-over';
+              
+              // Render prepared frame overlay over photos
+              ctx.drawImage(offCanvas, 0, 0, w, h);
+            }
           } catch (overlayErr) {
             console.warn('Frame overlay failed to load, falling back to basic borders:', overlayErr);
             // Fallback border
