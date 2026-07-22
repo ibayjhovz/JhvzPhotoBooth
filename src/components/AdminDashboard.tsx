@@ -59,6 +59,7 @@ export default function AdminDashboard({
   const [isConnectingDrive, setIsConnectingDrive] = useState(false);
   const [testDriveStatus, setTestDriveStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [authDomainError, setAuthDomainError] = useState<string | null>(null);
+  const [authProviderError, setAuthProviderError] = useState<boolean>(false);
   const [driveSetupMethod, setDriveSetupMethod] = useState<'oauth' | 'manual'>(() => {
     return settings.driveConfig?.authMethod || 'oauth';
   });
@@ -77,6 +78,7 @@ export default function AdminDashboard({
   const handleConnectDrive = async () => {
     setIsConnectingDrive(true);
     setAuthDomainError(null);
+    setAuthProviderError(false);
     try {
       const result = await googleSignIn();
       if (result) {
@@ -90,12 +92,21 @@ export default function AdminDashboard({
             accessToken: result.accessToken,
           }
         });
+        onSaveEmailConfig({
+          ...emailConfig,
+          deliveryStrategy: 'gmail',
+          senderEmail: result.user.email || emailConfig.senderEmail,
+        });
       }
     } catch (err: any) {
       console.error('Failed to connect Google Drive:', err);
       const isAuthDomainErr = err.code === 'auth/unauthorized-domain' || err.message?.includes('unauthorized-domain');
+      const isProviderErr = err.code === 'auth/operation-not-allowed' || err.code === 'auth/invalid-actionCode' || err.message?.includes('invalid') || err.message?.includes('operation-not-allowed');
+
       if (isAuthDomainErr) {
         setAuthDomainError(window.location.hostname);
+      } else if (isProviderErr) {
+        setAuthProviderError(true);
       } else {
         alert(`Connection failed: ${err.message || err}`);
       }
@@ -1891,6 +1902,74 @@ export default function AdminDashboard({
               >
                 Close
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {authProviderError && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-lg w-full flex flex-col gap-4 shadow-2xl relative">
+            <button 
+              onClick={() => setAuthProviderError(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors text-base font-bold"
+            >
+              ✕
+            </button>
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-2xl">
+                <AlertTriangle className="w-6 h-6 text-amber-400" />
+              </div>
+              <div>
+                <h3 className="text-sm font-black uppercase tracking-wider text-amber-300">Firebase Google Auth Provider Required</h3>
+                <p className="text-[10px] text-slate-400 mt-0.5">Firebase returned: "The requested action is invalid"</p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-amber-500/5 border border-amber-500/15 rounded-xl text-xs text-slate-300 leading-relaxed">
+              Google Authentication sign-in provider is currently disabled in your Firebase Console project (<strong className="text-amber-300">jhvzphotobooth</strong>).
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <div className="p-3.5 bg-blue-500/10 border border-blue-500/20 rounded-2xl flex flex-col gap-2">
+                <span className="text-xs font-black text-blue-300 uppercase tracking-wider flex items-center gap-1.5">
+                  ⚡ Option 1: Use 10s App Password (Recommended)
+                </span>
+                <p className="text-[11px] text-slate-300 leading-normal">
+                  Connect your Gmail account in 10 seconds via Google App Password. Bypasses all Firebase popup setup and sends 100% real emails directly!
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGmailSetupMethod('app_password');
+                    setAuthProviderError(false);
+                    setShowAppPassHelp(true);
+                  }}
+                  className="py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-md cursor-pointer mt-1"
+                >
+                  Switch to 10s App Password Mode Now
+                </button>
+              </div>
+
+              <div className="p-3.5 bg-white/5 border border-white/10 rounded-2xl flex flex-col gap-2">
+                <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+                  Option 2: Enable Google Provider in Firebase Console
+                </span>
+                <ol className="text-xs text-slate-300 space-y-1.5 list-decimal list-inside pl-1 leading-relaxed">
+                  <li>Open <a href="https://console.firebase.google.com/" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline font-bold inline-flex items-center gap-0.5">Firebase Console <ExternalLink className="w-3 h-3" /></a> and select project <strong>jhvzphotobooth</strong>.</li>
+                  <li>Go to <strong>Authentication</strong> &rarr; <strong>Sign-in method</strong>.</li>
+                  <li>Click <strong>Google</strong> &rarr; toggle <strong>Enable</strong> &rarr; select support email &rarr; <strong>Save</strong>.</li>
+                  <li>In <strong>Settings</strong> tab &rarr; <strong>Authorized domains</strong>, add <code className="text-emerald-400 font-mono">{typeof window !== 'undefined' ? window.location.hostname : 'jhvz-photo-booth.vercel.app'}</code>.</li>
+                </ol>
+                <a
+                  href="https://console.firebase.google.com/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="py-2 bg-white/10 hover:bg-white/20 text-white font-bold text-center text-xs uppercase tracking-wider rounded-xl transition-all mt-1 flex items-center justify-center gap-1"
+                >
+                  Open Firebase Console <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              </div>
             </div>
           </div>
         </div>

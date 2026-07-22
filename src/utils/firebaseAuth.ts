@@ -72,6 +72,20 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
     return { user: result.user, accessToken: cachedAccessToken };
   } catch (error: any) {
     console.error('Sign in error:', error);
+    const code = error?.code || '';
+    const msg = error?.message || '';
+    if (
+      code === 'auth/operation-not-allowed' ||
+      code === 'auth/invalid-actionCode' ||
+      msg.includes('action is invalid') ||
+      msg.includes('operation-not-allowed')
+    ) {
+      const customErr: any = new Error(
+        'Google Sign-In is not enabled in Firebase Console for project jhvzphotobooth.'
+      );
+      customErr.code = 'auth/operation-not-allowed';
+      throw customErr;
+    }
     throw error;
   } finally {
     isSigningIn = false;

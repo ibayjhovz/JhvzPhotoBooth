@@ -462,8 +462,15 @@ export default function FinalPreview({
     } catch (err: any) {
       console.error('Failed to connect Google:', err);
       const isAuthDomainErr = err.code === 'auth/unauthorized-domain' || err.message?.includes('unauthorized-domain');
+      const isProviderErr = err.code === 'auth/operation-not-allowed' || err.code === 'auth/invalid-actionCode' || err.message?.includes('invalid') || err.message?.includes('operation-not-allowed');
+
       if (isAuthDomainErr) {
         setAuthDomainError(window.location.hostname);
+      } else if (isProviderErr) {
+        setNotification({
+          message: `Google Sign-In is disabled in Firebase Console for jhvzphotobooth. Go to Admin Dashboard -> Email Settings to use the instant 10s Gmail App Password method instead!`,
+          type: 'error'
+        });
       } else {
         setNotification({
           message: `Google connection failed: ${err.message || err}`,
