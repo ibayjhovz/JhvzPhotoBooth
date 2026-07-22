@@ -1,10 +1,10 @@
 {
-  "projectId": "restful-droplet-q6ppv",
-  "appId": "1:586015012392:web:b998e65e322e7879f0e71d",
-  "apiKey": "AIzaSyCIjsT5WlmoyS8uF-WJlRBqWt6pVLV1klI",
-  "authDomain": "restful-droplet-q6ppv.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-remixphotoboothp-dbb6a797-bd0d-4a10-b77b-b14c73785afa",
-  "storageBucket": "restful-droplet-q6ppv.firebasestorage.app",
-  "messagingSenderId": "586015012392",
-  "measurementId": ""
+  "apiKey": "AIzaSyCz1Vr3kyYbX5Db9gEuVVry2y1aZQovr28",
+  "authDomain": "jhvzphotobooth.firebaseapp.com",
+  "databaseURL": "https://jhvzphotobooth-default-rtdb.firebaseio.com",
+  "projectId": "jhvzphotobooth",
+  "storageBucket": "jhvzphotobooth.firebasestorage.app",
+  "messagingSenderId": "548603949819",
+  "appId": "1:548603949819:web:9f19d53d7b5983ea9fb65e",
+  "measurementId": "G-PGQ8R0K7S"
 }
