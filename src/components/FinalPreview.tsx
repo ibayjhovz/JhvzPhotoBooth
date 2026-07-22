@@ -219,7 +219,7 @@ export default function FinalPreview({
       const target = customEmail || guestEmail || 'the client';
       if (isLastEmailSimulated) {
         setNotification({
-          message: `Simulation Mode Warning: SMTP not configured. No real email was sent to ${target}. To send real photostrips, please configure your custom SMTP server details in the Admin Dashboard or use the Webmail Draft fallback!`,
+          message: `SMTP is not configured yet. You can click 'Webmail Draft' below to send instantly via your email client, or configure your Gmail App Password in Admin Settings for automated emails.`,
           type: 'error'
         });
       } else {
@@ -230,16 +230,16 @@ export default function FinalPreview({
       }
       const timer = setTimeout(() => {
         setNotification(null);
-      }, 8000);
+      }, 10000);
       return () => clearTimeout(timer);
     } else if (emailStatus === 'error') {
       setNotification({
-        message: `SMTP delivery failed. Click the 'Webmail' or 'Copy Link' fallback buttons on-screen for guaranteed instant dispatch!`,
+        message: `SMTP delivery failed. Click the 'Webmail Draft' or 'Copy Link' buttons below for guaranteed instant dispatch!`,
         type: 'error'
       });
       const timer = setTimeout(() => {
         setNotification(null);
-      }, 7000);
+      }, 10000);
       return () => clearTimeout(timer);
     }
   }, [emailStatus, guestEmail, customEmail, isLastEmailSimulated]);
@@ -1351,33 +1351,56 @@ export default function FinalPreview({
       {/* Toast Notification for Email dispatch */}
       {notification && (
         <div 
-          className="fixed bottom-24 left-1/2 -translate-x-1/2 sm:bottom-6 sm:right-6 sm:left-auto sm:translate-x-0 z-50 flex items-center gap-3.5 px-4.5 py-4 bg-slate-950/95 border border-white/10 backdrop-blur-xl rounded-2xl shadow-[0_10px_50px_rgba(0,0,0,0.5)] max-w-sm w-[90vw] sm:w-[360px] animate-fade-in animate-slide-up" 
+          className="fixed bottom-24 left-1/2 -translate-x-1/2 sm:bottom-6 sm:right-6 sm:left-auto sm:translate-x-0 z-50 flex flex-col gap-2.5 p-4 bg-slate-950/95 border border-white/10 backdrop-blur-xl rounded-2xl shadow-[0_10px_50px_rgba(0,0,0,0.5)] max-w-sm w-[90vw] sm:w-[380px] animate-fade-in animate-slide-up" 
           id="email-toast-notification"
         >
-          <div className={`p-2.5 rounded-xl shrink-0 ${
-            notification.type === 'success' 
-              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
-              : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-          }`}>
-            {notification.type === 'success' ? (
-              <CheckCircle className="w-5 h-5 fill-none" />
-            ) : (
-              <AlertTriangle className="w-5 h-5 text-rose-400" />
-            )}
+          <div className="flex items-start gap-3">
+            <div className={`p-2 rounded-xl shrink-0 ${
+              notification.type === 'success' 
+                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+                : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+            }`}>
+              {notification.type === 'success' ? (
+                <CheckCircle className="w-5 h-5 fill-none" />
+              ) : (
+                <AlertTriangle className="w-5 h-5 text-amber-400" />
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <h5 className="font-extrabold text-[11px] text-white uppercase tracking-wider">
+                {notification.type === 'success' ? 'Email Dispatched!' : 'Delivery Notice'}
+              </h5>
+              <p className="text-xs text-slate-300 mt-1 leading-normal break-words">{notification.message}</p>
+            </div>
+            <button 
+              onClick={() => setNotification(null)}
+              className="text-[10px] text-slate-400 hover:text-white transition-colors font-bold px-2 py-1 bg-white/5 hover:bg-white/10 rounded-lg shrink-0 border border-white/5"
+              id="btn-close-toast"
+            >
+              ✕
+            </button>
           </div>
-          <div className="flex-1 min-w-0">
-            <h5 className="font-extrabold text-[11px] text-white uppercase tracking-wider">
-              {notification.type === 'success' ? 'Email Dispatched!' : 'Delivery Warning'}
-            </h5>
-            <p className="text-xs text-slate-300 mt-1 leading-normal break-words">{notification.message}</p>
-          </div>
-          <button 
-            onClick={() => setNotification(null)}
-            className="text-[10px] text-slate-400 hover:text-white transition-colors font-bold px-2.5 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg shrink-0 border border-white/5"
-            id="btn-close-toast"
-          >
-            Close
-          </button>
+
+          {(notification.type === 'error' || isLastEmailSimulated) && (
+            <div className="flex items-center gap-2 pt-2 border-t border-white/10">
+              <a
+                href={getMailtoUrl(customEmail || guestEmail || '')}
+                target="_blank"
+                rel="noreferrer"
+                className="flex-1 py-1.5 px-2.5 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-emerald-300 font-extrabold text-[11px] rounded-xl text-center transition-all flex items-center justify-center gap-1.5"
+                id="btn-toast-webmail"
+              >
+                <Mail className="w-3 h-3" /> Webmail Draft
+              </a>
+              <button
+                onClick={handleCopyLink}
+                className="py-1.5 px-3 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 text-blue-300 font-extrabold text-[11px] rounded-xl transition-all flex items-center justify-center gap-1"
+                id="btn-toast-copy"
+              >
+                <Link className="w-3 h-3" /> {copiedLink ? 'Copied!' : 'Copy Link'}
+              </button>
+            </div>
+          )}
         </div>
       )}
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Camera, RefreshCw, CheckCircle, Zap, ShieldAlert, Monitor } from 'lucide-react';
+import { Camera, RefreshCw, CheckCircle, Zap, ShieldAlert, Monitor, Sparkles } from 'lucide-react';
 import { CompanionStatus, EventFrame, PhotoboothEvent } from '../types';
+import { getGestureRecognizer, analyzeLandmarksGeometry, GestureType } from '../utils/handGesture';
 
 interface CaptureWorkflowProps {
   activeEvent: PhotoboothEvent;
@@ -28,6 +29,7 @@ export default function CaptureWorkflow({
   const [retakeCount, setRetakeCount] = useState<number>(0);
 
   const videoRef = useRef<HTMLVideoElement>(null);
+  const hiddenVideoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
@@ -40,6 +42,17 @@ export default function CaptureWorkflow({
     const saved = localStorage.getItem('photobooth_mirror_preview');
     return saved === null ? true : saved === 'true';
   });
+
+  // Hand Gesture Control States
+  const [gestureEnabled, setGestureEnabled] = useState<boolean>(() => {
+    const saved = localStorage.getItem('photobooth_gesture_control');
+    return saved === null ? true : saved === 'true';
+  });
+  const [currentGesture, setCurrentGesture] = useState<GestureType>('None');
+  const [holdProgress, setHoldProgress] = useState<number>(0); // 0 to 100
+  const [gestureStatusText, setGestureStatusText] = useState<string>('Initializing Hand AI...');
+  const [isRecognizerReady, setIsRecognizerReady] = useState<boolean>(false);
+  const cooldownUntilRef = useRef<number>(0);
 
   // Sound Synth Synthesizer using Web Audio API
   const playBeep = (freq: number, duration: number) => {
@@ -63,6 +76,15 @@ export default function CaptureWorkflow({
       osc.stop(audioCtx.currentTime + duration);
     } catch (err) {
       console.warn('Synth error:', err);
+    }
+  };
+
+  const playGestureChime = () => {
+    try {
+      playBeep(880, 0.12);
+      setTimeout(() => playBeep(1320, 0.18), 90);
+    } catch (e) {
+      console.warn('Chime error:', e);
     }
   };
 
@@ -342,10 +364,149 @@ export default function CaptureWorkflow({
     setWorkflowState('countdown'); // Restart immediately for interactive speed
   };
 
+  // Hand Gesture Recognition Loop using MediaPipe Tasks Vision
+  useEffect(() => {
+    if (!gestureEnabled) return;
+
+    let active = true;
+    let recognizer: any = null;
+    let frameInterval: NodeJS.Timeout | null = null;
+    let currentHold = 0;
+
+    const initRecognizer = async () => {
+      setGestureStatusText('Loading Hand AI...');
+      recognizer = await getGestureRecognizer();
+      if (!active) return;
+      if (recognizer) {
+        setIsRecognizerReady(true);
+        setGestureStatusText('Hand AI Ready! Show Palm / Thumbs');
+      } else {
+        setGestureStatusText('Gesture model offline');
+      }
+    };
+
+    initRecognizer();
+
+    frameInterval = setInterval(() => {
+      if (!active || !recognizer || !gestureEnabled) return;
+      if (Date.now() < cooldownUntilRef.current) {
+        setHoldProgress(0);
+        return;
+      }
+
+      const videoEl = hiddenVideoRef.current || videoRef.current;
+      if (!videoEl || videoEl.readyState < 2) return;
+
+      try {
+        const nowMs = Date.now();
+        const results = recognizer.recognizeForVideo(videoEl, nowMs);
+
+        let detected: GestureType = 'None';
+        if (results?.gestures?.length > 0 && results.gestures[0]?.length > 0) {
+          const topGesture = results.gestures[0][0];
+          if (topGesture.score > 0.4) {
+            const cat = topGesture.categoryName;
+            if (cat === 'Open_Palm' || cat === 'Thumb_Up' || cat === 'Thumb_Down') {
+              detected = cat as GestureType;
+            }
+          }
+        }
+
+        // Fallback to landmark geometry analysis if category is not detected directly
+        if (detected === 'None' && results?.landmarks?.length > 0) {
+          detected = analyzeLandmarksGeometry(results.landmarks[0]);
+        }
+
+        setCurrentGesture(detected);
+
+        // State machine action triggers
+        if (workflowState === 'preview') {
+          if (detected === 'Open_Palm') {
+            currentHold += 25; // 4 ticks (~480ms) to hit 100%
+            const prog = Math.min(100, currentHold);
+            setHoldProgress(prog);
+            setGestureStatusText('🖐️ Palm Open Detected — Hold to Take Photo!');
+            if (currentHold >= 100) {
+              cooldownUntilRef.current = Date.now() + 2000;
+              currentHold = 0;
+              setHoldProgress(0);
+              playGestureChime();
+              handleStartCountdown();
+            }
+          } else {
+            currentHold = Math.max(0, currentHold - 20);
+            setHoldProgress(currentHold);
+            if (detected === 'Thumb_Up' || detected === 'Thumb_Down') {
+              setGestureStatusText('Show Open Palm 🖐️ to trigger photo countdown');
+            } else {
+              setGestureStatusText('Wave Open Palm 🖐️ to Take Photo');
+            }
+          }
+        } else if (workflowState === 'review') {
+          if (detected === 'Thumb_Up') {
+            currentHold += 25;
+            const prog = Math.min(100, currentHold);
+            setHoldProgress(prog);
+            setGestureStatusText('👍 Thumbs Up — Hold to Use Photo!');
+            if (currentHold >= 100) {
+              cooldownUntilRef.current = Date.now() + 2000;
+              currentHold = 0;
+              setHoldProgress(0);
+              playGestureChime();
+              handleAcceptPhoto();
+            }
+          } else if (detected === 'Thumb_Down') {
+            currentHold += 25;
+            const prog = Math.min(100, currentHold);
+            setHoldProgress(prog);
+            setGestureStatusText('👎 Thumbs Down — Hold to Retake!');
+            if (currentHold >= 100) {
+              cooldownUntilRef.current = Date.now() + 2000;
+              currentHold = 0;
+              setHoldProgress(0);
+              playGestureChime();
+              handleRetakePhoto();
+            }
+          } else {
+            currentHold = Math.max(0, currentHold - 20);
+            setHoldProgress(currentHold);
+            setGestureStatusText('Show 👍 Thumbs Up (Accept) or 👎 Thumbs Down (Retake)');
+          }
+        } else {
+          // countdown or shutter mode
+          currentHold = 0;
+          setHoldProgress(0);
+          setGestureStatusText('Capturing photo sequence...');
+        }
+      } catch (err) {
+        console.warn('Gesture tick error:', err);
+      }
+    }, 120);
+
+    return () => {
+      active = false;
+      if (frameInterval) clearInterval(frameInterval);
+    };
+  }, [gestureEnabled, workflowState, currentStep]);
+
   return (
     <div className="relative min-h-screen bg-transparent text-white flex flex-col justify-between p-6 md:p-12 overflow-hidden select-none" id="capture-workflow-view">
       {/* Hidden helper canvas for snaps */}
       <canvas ref={canvasRef} className="hidden"></canvas>
+
+      {/* Hidden video element for gesture processing when main video is replaced by image review */}
+      <video
+        ref={(el) => {
+          (hiddenVideoRef as any).current = el;
+          if (el && streamRef.current && el.srcObject !== streamRef.current) {
+            el.srcObject = streamRef.current;
+          }
+        }}
+        autoPlay
+        playsInline
+        muted
+        className="hidden"
+      />
 
       {/* Screen flash overlay */}
       <div
@@ -398,13 +559,13 @@ export default function CaptureWorkflow({
         </div>
       </div>
 
-      {/* Camera Selection Toolbar (Supports DSLR as Webcams, USB Capture, Virtual Cameras) */}
-      {videoDevices.length > 0 && (
-        <div className="w-full max-w-5xl mx-auto flex flex-col sm:flex-row gap-3 items-center justify-between px-5 py-3 bg-slate-900/40 border border-white/5 rounded-2xl backdrop-blur-md z-10 mb-2">
-          <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-start">
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">
-              Active Webcam Lens:
-            </span>
+      {/* Camera Selection Toolbar (Supports DSLR as Webcams, USB Capture, Virtual Cameras, Gesture AI) */}
+      <div className="w-full max-w-5xl mx-auto flex flex-col sm:flex-row gap-3 items-center justify-between px-5 py-3 bg-slate-900/40 border border-white/5 rounded-2xl backdrop-blur-md z-10 mb-2">
+        <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-start">
+          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">
+            Active Lens:
+          </span>
+          {videoDevices.length > 0 && (
             <select
               value={selectedDeviceId}
               onChange={(e) => {
@@ -420,25 +581,43 @@ export default function CaptureWorkflow({
                 </option>
               ))}
             </select>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <label className="flex items-center gap-2 text-xs text-slate-400 font-bold select-none cursor-pointer">
-              <input
-                type="checkbox"
-                checked={mirrorPreview}
-                onChange={(e) => {
-                  const val = e.target.checked;
-                  setMirrorPreview(val);
-                  localStorage.setItem('photobooth_mirror_preview', String(val));
-                }}
-                className="rounded border-white/20 bg-slate-950 text-blue-600 focus:ring-0 focus:ring-offset-0"
-              />
-              Mirror Preview (Recommended for Webcams)
-            </label>
-          </div>
+          )}
         </div>
-      )}
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => {
+              const val = !gestureEnabled;
+              setGestureEnabled(val);
+              localStorage.setItem('photobooth_gesture_control', String(val));
+            }}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border flex items-center gap-1.5 cursor-pointer ${
+              gestureEnabled
+                ? 'bg-purple-600/20 border-purple-500/40 text-purple-300 shadow-md shadow-purple-500/10'
+                : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
+            }`}
+            title="Toggle AI Hand Gesture Controls"
+            id="btn-toggle-gesture-control"
+          >
+            <Sparkles className={`w-3.5 h-3.5 ${gestureEnabled ? 'text-purple-400 animate-pulse' : 'text-slate-400'}`} />
+            <span>Gesture AI {gestureEnabled ? 'ON' : 'OFF'}</span>
+          </button>
+
+          <label className="flex items-center gap-2 text-xs text-slate-400 font-bold select-none cursor-pointer">
+            <input
+              type="checkbox"
+              checked={mirrorPreview}
+              onChange={(e) => {
+                const val = e.target.checked;
+                setMirrorPreview(val);
+                localStorage.setItem('photobooth_mirror_preview', String(val));
+              }}
+              className="rounded border-white/20 bg-slate-950 text-blue-600 focus:ring-0 focus:ring-offset-0"
+            />
+            Mirror
+          </label>
+        </div>
+      </div>
 
       {/* Split-Screen Main Workspace: Large Viewfinder (Left) + Real-Time Photostrip Preview (Right) */}
       <div className="w-full max-w-6xl mx-auto flex-1 flex flex-col lg:flex-row gap-8 items-center justify-center z-10 py-2">
@@ -449,6 +628,33 @@ export default function CaptureWorkflow({
             className="relative w-full aspect-[4/3] sm:aspect-video bg-slate-900/80 rounded-3xl overflow-hidden border border-white/10 shadow-2xl flex items-center justify-center backdrop-blur-md" 
             id="main-viewfinder-card"
           >
+            {/* Top-Right Gesture Recognition HUD Badge */}
+            {gestureEnabled && (
+              <div className="absolute top-4 right-4 z-30 flex items-center gap-2.5 px-3 py-2 bg-slate-950/85 backdrop-blur-md rounded-2xl border border-purple-500/30 shadow-xl animate-fade-in pointer-events-none">
+                <div className="relative flex items-center justify-center">
+                  <div className="w-7 h-7 rounded-full bg-purple-500/20 flex items-center justify-center text-sm font-black border border-purple-500/40">
+                    {currentGesture === 'Open_Palm' ? '🖐️' : currentGesture === 'Thumb_Up' ? '👍' : currentGesture === 'Thumb_Down' ? '👎' : '✋'}
+                  </div>
+                  {holdProgress > 0 && (
+                    <div 
+                      className="absolute inset-0 rounded-full border-2 border-purple-400 animate-spin-slow"
+                      style={{
+                        clipPath: `inset(0 ${100 - holdProgress}% 0 0)`
+                      }}
+                    />
+                  )}
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-[9px] font-black uppercase tracking-wider text-purple-300 flex items-center gap-1">
+                    <span>Hand Gesture AI</span>
+                    {holdProgress > 0 && <span className="text-emerald-400 font-extrabold">{holdProgress}%</span>}
+                  </span>
+                  <span className="text-[10px] font-bold text-slate-200">
+                    {gestureStatusText}
+                  </span>
+                </div>
+              </div>
+            )}
             {/* Live Camera Viewport (Active capture states) */}
             {workflowState !== 'review' ? (
               <div className="relative w-full h-full">
@@ -528,6 +734,38 @@ export default function CaptureWorkflow({
               </div>
             )}
           </div>
+
+          {/* Onscreen Gesture Shortcuts Legend */}
+          {gestureEnabled && (
+            <div className="w-full mt-3 px-4 py-2.5 bg-purple-950/40 border border-purple-500/20 rounded-2xl backdrop-blur-md flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-1.5 text-purple-300 font-extrabold text-[10px] uppercase tracking-wider">
+                <Sparkles className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                <span>Gesture Shortcuts:</span>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap text-[11px] font-bold text-slate-300">
+                <div className={`flex items-center gap-1 px-2.5 py-1 rounded-xl border transition-all ${
+                  workflowState === 'preview' ? 'bg-purple-500/25 border-purple-400 text-white font-black shadow-sm' : 'bg-white/5 border-white/5 text-slate-400 opacity-60'
+                }`}>
+                  <span>🖐️ Palm Open</span>
+                  <span className="text-[9px] uppercase tracking-wider text-purple-300 font-extrabold">= Take Photo</span>
+                </div>
+
+                <div className={`flex items-center gap-1 px-2.5 py-1 rounded-xl border transition-all ${
+                  workflowState === 'review' ? 'bg-emerald-500/25 border-emerald-400 text-white font-black shadow-sm' : 'bg-white/5 border-white/5 text-slate-400 opacity-60'
+                }`}>
+                  <span>👍 Thumbs Up</span>
+                  <span className="text-[9px] uppercase tracking-wider text-emerald-300 font-extrabold">= Next / Use</span>
+                </div>
+
+                <div className={`flex items-center gap-1 px-2.5 py-1 rounded-xl border transition-all ${
+                  workflowState === 'review' ? 'bg-rose-500/25 border-rose-400 text-white font-black shadow-sm' : 'bg-white/5 border-white/5 text-slate-400 opacity-60'
+                }`}>
+                  <span>👎 Thumbs Down</span>
+                  <span className="text-[9px] uppercase tracking-wider text-rose-300 font-extrabold">= Retake</span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* RIGHT COLUMN: Interactive Real-Time Photostrip Preview */}
