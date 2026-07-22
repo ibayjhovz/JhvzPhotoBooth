@@ -206,6 +206,10 @@ export default function CaptureWorkflow({
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
         }
+        if (hiddenVideoRef.current) {
+          hiddenVideoRef.current.srcObject = stream;
+          hiddenVideoRef.current.play().catch(() => {});
+        }
       } catch (err) {
         console.error('Webcam initialization error:', err);
       }
@@ -215,8 +219,14 @@ export default function CaptureWorkflow({
 
     // Safety sync to ensure srcObject binding is correctly established
     const timer = setTimeout(() => {
-      if (streamRef.current && videoRef.current && !videoRef.current.srcObject) {
-        videoRef.current.srcObject = streamRef.current;
+      if (streamRef.current) {
+        if (videoRef.current && !videoRef.current.srcObject) {
+          videoRef.current.srcObject = streamRef.current;
+        }
+        if (hiddenVideoRef.current && !hiddenVideoRef.current.srcObject) {
+          hiddenVideoRef.current.srcObject = streamRef.current;
+          hiddenVideoRef.current.play().catch(() => {});
+        }
       }
     }, 150);
 
@@ -381,6 +391,25 @@ export default function CaptureWorkflow({
     }
   };
 
+  // Keep fresh references for callbacks inside setInterval
+  const latestHandlersRef = useRef({
+    handleStartCountdown,
+    handleAcceptPhoto,
+    handleRetakePhoto,
+    workflowState,
+    currentStep,
+  });
+
+  useEffect(() => {
+    latestHandlersRef.current = {
+      handleStartCountdown,
+      handleAcceptPhoto,
+      handleRetakePhoto,
+      workflowState,
+      currentStep,
+    };
+  });
+
   // Hand Gesture Recognition Loop using MediaPipe Tasks Vision
   useEffect(() => {
     if (!gestureEnabled) return;
@@ -413,7 +442,11 @@ export default function CaptureWorkflow({
         return;
       }
 
-      const videoEl = hiddenVideoRef.current || videoRef.current;
+      // Select active video stream element (prefer visible videoRef, or fallback to hiddenVideoRef)
+      const videoEl = (videoRef.current && videoRef.current.readyState >= 2)
+        ? videoRef.current
+        : hiddenVideoRef.current;
+
       if (!videoEl || videoEl.readyState < 2) return;
 
       try {
@@ -431,7 +464,7 @@ export default function CaptureWorkflow({
 
           if (results?.gestures?.length > 0 && results.gestures[0]?.length > 0) {
             const topGesture = results.gestures[0][0];
-            if (topGesture.score > 0.35) {
+            if (topGesture.score > 0.25) {
               const catRaw = (topGesture.categoryName || '').toLowerCase().replace(/[^a-z]/g, '');
               if (catRaw.includes('palm')) {
                 detected = 'Open_Palm';
@@ -471,22 +504,29 @@ export default function CaptureWorkflow({
           }
         }
 
+        const {
+          handleStartCountdown: triggerStart,
+          handleAcceptPhoto: triggerAccept,
+          handleRetakePhoto: triggerRetake,
+          workflowState: curState,
+        } = latestHandlersRef.current;
+
         // State machine action triggers
-        if (workflowState === 'preview') {
+        if (curState === 'preview') {
           if (detected === 'Open_Palm') {
-            currentHold += 25; // 4 ticks (~480ms) to trigger
+            currentHold += 35; // 3 ticks (~300ms hold) to trigger
             const prog = Math.min(100, currentHold);
             setHoldProgress(prog);
-            setGestureStatusText('🖐️ Palm Open Detected — Hold to Take Photo!');
+            setGestureStatusText('🖐️ Open Palm Detected — Hold to Take Photo!');
             if (currentHold >= 100) {
-              cooldownUntilRef.current = Date.now() + 2000;
+              cooldownUntilRef.current = Date.now() + 2500;
               currentHold = 0;
               setHoldProgress(0);
               playGestureChime();
-              handleStartCountdown();
+              triggerStart();
             }
           } else {
-            currentHold = Math.max(0, currentHold - 20);
+            currentHold = Math.max(0, currentHold - 15);
             setHoldProgress(currentHold);
             if (detected === 'Thumb_Up' || detected === 'Thumb_Down') {
               setGestureStatusText('Show Open Palm 🖐️ to trigger photo countdown');
@@ -494,33 +534,33 @@ export default function CaptureWorkflow({
               setGestureStatusText(handLandmarks ? 'Hand Detected! Wave Palm 🖐️ to Take Photo' : 'Wave Open Palm 🖐️ to Take Photo');
             }
           }
-        } else if (workflowState === 'review') {
+        } else if (curState === 'review') {
           if (detected === 'Thumb_Up') {
-            currentHold += 25;
+            currentHold += 35;
             const prog = Math.min(100, currentHold);
             setHoldProgress(prog);
             setGestureStatusText('👍 Thumbs Up — Hold to Use Photo!');
             if (currentHold >= 100) {
-              cooldownUntilRef.current = Date.now() + 2000;
+              cooldownUntilRef.current = Date.now() + 2500;
               currentHold = 0;
               setHoldProgress(0);
               playGestureChime();
-              handleAcceptPhoto();
+              triggerAccept();
             }
           } else if (detected === 'Thumb_Down') {
-            currentHold += 25;
+            currentHold += 35;
             const prog = Math.min(100, currentHold);
             setHoldProgress(prog);
             setGestureStatusText('👎 Thumbs Down — Hold to Retake!');
             if (currentHold >= 100) {
-              cooldownUntilRef.current = Date.now() + 2000;
+              cooldownUntilRef.current = Date.now() + 2500;
               currentHold = 0;
               setHoldProgress(0);
               playGestureChime();
-              handleRetakePhoto();
+              triggerRetake();
             }
           } else {
-            currentHold = Math.max(0, currentHold - 20);
+            currentHold = Math.max(0, currentHold - 15);
             setHoldProgress(currentHold);
             setGestureStatusText('Show 👍 Thumbs Up (Accept) or 👎 Thumbs Down (Retake)');
           }
@@ -533,31 +573,40 @@ export default function CaptureWorkflow({
       } catch (err) {
         console.warn('Gesture tick error:', err);
       }
-    }, 110);
+    }, 100);
 
     return () => {
       active = false;
       if (frameInterval) clearInterval(frameInterval);
     };
-  }, [gestureEnabled, workflowState, currentStep]);
+  }, [gestureEnabled]);
 
   return (
     <div className="relative min-h-screen bg-transparent text-white flex flex-col justify-between p-6 md:p-12 overflow-hidden select-none" id="capture-workflow-view">
       {/* Hidden helper canvas for snaps */}
       <canvas ref={canvasRef} className="hidden"></canvas>
 
-      {/* Hidden video element for gesture processing when main video is replaced by image review */}
+      {/* Offscreen video element for continuous gesture processing */}
       <video
         ref={(el) => {
           (hiddenVideoRef as any).current = el;
           if (el && streamRef.current && el.srcObject !== streamRef.current) {
             el.srcObject = streamRef.current;
+            el.play().catch(() => {});
           }
         }}
         autoPlay
         playsInline
         muted
-        className="hidden"
+        style={{
+          position: 'fixed',
+          top: '-9999px',
+          left: '-9999px',
+          width: '320px',
+          height: '240px',
+          opacity: 0,
+          pointerEvents: 'none',
+        }}
       />
 
       {/* Screen flash overlay */}

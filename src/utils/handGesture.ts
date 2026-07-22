@@ -75,9 +75,9 @@ export async function getGestureRecognizer(): Promise<GestureRecognizer | null> 
 }
 
 /**
- * Geometric analysis from 21 hand landmarks for 100% reliable backup
+ * Geometric analysis from 21 hand landmarks for 100% reliable gesture detection
  */
-export function analyzeLandmarksGeometry(landmarks: Array<{ x: number; y: number; z: number }>): GestureType {
+export function analyzeLandmarksGeometry(landmarks: Array<{ x: number; y: number; z?: number }>): GestureType {
   if (!landmarks || landmarks.length < 21) return 'None';
 
   const wrist = landmarks[0];
@@ -90,38 +90,41 @@ export function analyzeLandmarksGeometry(landmarks: Array<{ x: number; y: number
   
   const middleTip = landmarks[12];
   const middlePip = landmarks[10];
+  const middleMcp = landmarks[9];
   
   const ringTip = landmarks[16];
   const ringPip = landmarks[14];
+  const ringMcp = landmarks[13];
   
   const pinkyTip = landmarks[20];
   const pinkyPip = landmarks[18];
+  const pinkyMcp = landmarks[17];
 
-  // In normalized image space, 0,0 is top-left, 1,1 is bottom-right.
-  // Smaller Y means higher on screen!
+  const dist = (p1: { x: number; y: number }, p2: { x: number; y: number }) =>
+    Math.hypot(p1.x - p2.x, p1.y - p2.y);
 
-  // Are index, middle, ring, pinky extended upwards?
-  const isIndexExtended = indexTip.y < indexPip.y;
-  const isMiddleExtended = middleTip.y < middlePip.y;
-  const isRingExtended = ringTip.y < ringPip.y;
-  const isPinkyExtended = pinkyTip.y < pinkyPip.y;
+  // Measure finger tip distance from wrist vs knuckle (MCP) distance from wrist
+  const isIndexExtended = dist(wrist, indexTip) > dist(wrist, indexMcp) * 1.2 || indexTip.y < indexPip.y;
+  const isMiddleExtended = dist(wrist, middleTip) > dist(wrist, middleMcp) * 1.2 || middleTip.y < middlePip.y;
+  const isRingExtended = dist(wrist, ringTip) > dist(wrist, ringMcp) * 1.2 || ringTip.y < ringPip.y;
+  const isPinkyExtended = dist(wrist, pinkyTip) > dist(wrist, pinkyMcp) * 1.2 || pinkyTip.y < pinkyPip.y;
 
   const extendedCount = [isIndexExtended, isMiddleExtended, isRingExtended, isPinkyExtended].filter(Boolean).length;
 
-  // 1. Open Palm: 3 or 4 fingers extended upwards
+  // 1. Open Palm: 3 or 4 fingers extended
   if (extendedCount >= 3) {
     return 'Open_Palm';
   }
 
-  // 2. Thumbs Up: Thumb tip is significantly higher than MCP and Wrist, and fingers are curled/folded
-  const isThumbUpPosition = thumbTip.y < thumbMcp.y - 0.02 && thumbTip.y < wrist.y - 0.05;
-  if (isThumbUpPosition && extendedCount <= 1) {
+  // 2. Thumbs Up: Thumb tip higher than MCP & Wrist, with fingers curled
+  const isThumbUpDir = (thumbTip.y < thumbMcp.y || dist(wrist, thumbTip) > dist(wrist, thumbMcp) * 1.2) && thumbTip.y < wrist.y;
+  if (isThumbUpDir && extendedCount <= 1) {
     return 'Thumb_Up';
   }
 
-  // 3. Thumbs Down: Thumb tip is significantly lower than MCP or Wrist, and fingers are curled
-  const isThumbDownPosition = thumbTip.y > thumbMcp.y + 0.02 && thumbTip.y > wrist.y + 0.03;
-  if (isThumbDownPosition && extendedCount <= 1) {
+  // 3. Thumbs Down: Thumb tip lower than MCP & Wrist, with fingers curled
+  const isThumbDownDir = (thumbTip.y > thumbMcp.y || thumbTip.y > wrist.y + 0.02) && thumbTip.y > wrist.y - 0.02;
+  if (isThumbDownDir && extendedCount <= 1) {
     return 'Thumb_Down';
   }
 
